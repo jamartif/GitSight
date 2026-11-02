@@ -227,6 +227,92 @@ export class Repository {
     return parseWorktrees(await this.exec(['worktree', 'list', '--porcelain']));
   }
 
+  /**
+   * Estimates which branch a commit was made on and which branch it was branched from.
+   * Git does not record this, so it is inferred from first-parent histories:
+   *  - a commit on a base branch's (main, develop…) first-parent chain was committed directly there;
+   *  - otherwise, the branches whose first-parent chain contains it are where it was made, and the
+   *    branch whose first-parent chain meets its ancestry closest is where that work branched from;
+   *  - if the branch was deleted after merging, its name is recovered from the merge commit message.
+   */
+  async branchOrigin(sha: string, baseBranches: string[] = DEFAULT_BASE_BRANCHES): Promise<BranchOrigin> {
+    const LIMIT = 20000;
+    const [locals, remotes] = await Promise.all([this.branches(false), this.branches(true)]);
+    const localNames = new Set(locals.map((b) => b.name));
+    const shortName = (b: Branch) => (b.remote ? b.name.substring(b.name.indexOf('/') + 1) : b.name);
+    const candidates = [...locals, ...remotes.filter((b) => !localNames.has(shortName(b)))].slice(0, 60);
+    const priority = (b: Branch) => {
+      const i = baseBranches.indexOf(shortName(b));
+      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    const isBase = (b: Branch) => priority(b) !== Number.MAX_SAFE_INTEGER;
+    const byPriority = (a: Branch, b: Branch) => priority(a) - priority(b) || Number(b.remote === false) - Number(a.remote === false);
+
+    const firstParents = new Map<string, Set<string>>();
+    await Promise.all(
+      candidates.map(async (b) => {
+        const out = await this.exec(['rev-list', '--first-parent', `-n${LIMIT}`, b.name, '--']).catch(() => '');
+        firstParents.set(b.name, new Set(out.split('\n').filter(Boolean)));
+      }),
+    );
+    const ancestors = (await this.exec(['rev-list', '--topo-order', `-n${LIMIT}`, sha, '--'])).split('\n').filter(Boolean);
+    const containedIn = (await this.exec(['for-each-ref', '--contains', sha, '--format=%(refname)', 'refs/heads', 'refs/remotes']).catch(() => ''))
+      .split('\n')
+      .filter((r) => r && !r.endsWith('/HEAD'))
+      .map((r) => r.replace(/^refs\/(heads|remotes)\//, ''));
+
+    const onFirstParent = candidates.filter((b) => firstParents.get(b.name)?.has(sha));
+    const base = onFirstParent.filter(isBase).sort(byPriority);
+    const result: BranchOrigin = { createdOn: [], containedIn };
+    if (base.length) {
+      result.committedOn = base[0].name;
+      return result;
+    }
+    result.createdOn = onFirstParent.map((b) => b.name).slice(0, 3);
+
+    // Branch point: the closest ancestor that lies on another branch's first-parent chain.
+    let best = Number.MAX_SAFE_INTEGER;
+    let bestBranches: Branch[] = [];
+    for (const b of candidates) {
+      if (onFirstParent.includes(b)) continue;
+      const fp = firstParents.get(b.name)!;
+      const idx = ancestors.findIndex((a, i) => i > 0 && fp.has(a));
+      if (idx === -1) continue;
+      if (idx < best) {
+        best = idx;
+        bestBranches = [b];
+      } else if (idx === best) {
+        bestBranches.push(b);
+      }
+    }
+    if (bestBranches.length) {
+      bestBranches.sort(byPriority);
+      const forkSha = ancestors[best];
+      const distance = parseInt((await this.exec(['rev-list', '--count', `${forkSha}..${sha}`]).catch(() => '0')).trim(), 10) || best;
+      result.branchedFrom = { branches: bestBranches.slice(0, 3).map((b) => b.name), sha: forkSha, distance };
+    }
+
+    // Branch deleted after merge: recover its name from the merge that brought the commit in.
+    if (!result.createdOn.length && containedIn.length) {
+      const target = candidates.filter((b) => containedIn.includes(b.name)).sort(byPriority)[0];
+      if (target) {
+        // Merges that descend from the commit, intersected with the target's first-parent chain:
+        // the oldest one is the merge that brought the commit into the target branch.
+        const descendants = new Set(
+          (await this.exec(['rev-list', '--ancestry-path', '--merges', `${sha}..${target.name}`, '--']).catch(() => '')).split('\n').filter(Boolean),
+        );
+        let mergeSha: string | undefined;
+        for (const s of firstParents.get(target.name) ?? []) if (descendants.has(s)) mergeSha = s;
+        if (mergeSha) {
+          const subject = (await this.exec(['log', '-n1', '--format=%s', mergeSha, '--']).catch(() => '')).trim();
+          const name = parseMergedBranch(subject);
+          if (name) result.inferredFrom = { branch: name, mergeSha };
+        }
+      }
+    }
+    return result;
+  }
+
   async contributors(): Promise<Contributor[]> {
     const out = await this.exec(['shortlog', '-sne', 'HEAD']).catch(() => '');
     return parseShortlog(out);
@@ -292,6 +378,37 @@ export class Repository {
     }
     return { added, modified, deleted };
   }
+}
+
+export const DEFAULT_BASE_BRANCHES = ['main', 'master', 'trunk', 'develop', 'development', 'dev'];
+
+export interface BranchOrigin {
+  /** set when the commit was made directly on a base branch (main, develop…) */
+  committedOn?: string;
+  /** non-base branches whose first-parent history contains the commit */
+  createdOn: string[];
+  /** branch name recovered from a merge message when the branch no longer exists */
+  inferredFrom?: { branch: string; mergeSha: string };
+  /** where the work branched off */
+  branchedFrom?: { branches: string[]; sha: string; distance: number };
+  /** every branch that contains the commit */
+  containedIn: string[];
+}
+
+/** Extracts the source branch from common merge commit subjects. */
+export function parseMergedBranch(subject: string): string | undefined {
+  const patterns = [
+    /^Merge pull request #\d+ from [^/\s]+\/(\S+)/,
+    /^Merge branch '([^']+)'/,
+    /^Merge remote-tracking branch '(?:[^/']+\/)?([^']+)'/,
+    /^Merged? (?:in )?(\S+) (?:into|to) \S+/i,
+    /^Merged PR \d+: .*?from (\S+)/i,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(subject);
+    if (m) return m[1];
+  }
+  return undefined;
 }
 
 const repoCache = new Map<string, Promise<Repository | undefined>>();

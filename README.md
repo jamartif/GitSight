@@ -8,6 +8,8 @@ GitSight es una extensión **gratuita y de código abierto (MIT)** inspirada en 
 
 ![Grafo de commits](docs/commit-graph.png)
 
+![Detalles del commit](docs/commit-details.png)
+
 ## Funcionalidades
 
 ### En el editor
@@ -37,7 +39,7 @@ Cada commit se expande para ver sus archivos; un clic abre el diff.
 Grafo interactivo con carriles de colores, merges, badges de ramas/tags/HEAD, filtro por texto, todas las ramas o solo la actual, paginación y acciones rápidas (checkout, crear rama, cherry-pick, copiar SHA). Clic en un commit → panel de detalles.
 
 ### Panel de detalles del commit
-Autor, committer, fechas, padres navegables, mensaje con enlaces a issues, estadísticas y lista de archivos (clic = diff), y botones para copiar SHA/mensaje, abrir en remoto, checkout, cherry-pick, revert, crear rama o tag.
+Autor, committer, fechas, padres navegables, **rama en la que se hizo el commit y rama de la que partió** (por ejemplo `feature/login` → partió de `develop`, incluso si la rama ya se borró tras el merge), ramas que lo contienen, mensaje con enlaces a issues, estadísticas y lista de archivos (clic = diff), y botones para copiar SHA/mensaje, abrir en remoto, checkout, cherry-pick, revert, crear rama o tag.
 
 ### Comparaciones y navegación
 - Abrir cambios con la revisión anterior (`Alt+,`), con el archivo de trabajo, con cualquier revisión o con cualquier rama/tag.
@@ -85,6 +87,7 @@ Todo está también en la paleta de comandos (`GitSight: …`) y en el menú con
 | `gitsight.heatmap.hotColor` / `coldColor` | `#f66a0a` / `#0a60f6` | Colores del heatmap |
 | `gitsight.heatmap.ageThresholdDays` | `90` | Días para considerar un cambio "caliente" |
 | `gitsight.views.maxCommits` | `200` | Commits cargados por página |
+| `gitsight.baseBranches` | `["main","master","trunk","develop","development","dev"]` | Ramas principales, por prioridad, usadas para deducir de qué rama partió cada commit |
 | `gitsight.remotes.custom` | `[]` | Proveedores para dominios propios |
 
 ## Instalación

@@ -114,6 +114,12 @@
           "default": 200,
           "description": "Maximum number of commits loaded in the history views and the commit graph."
         },
+        "gitsight.baseBranches": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["main", "master", "trunk", "develop", "development", "dev"],
+          "description": "Long-lived branches (in priority order) used to work out which branch a commit was made on and which branch it branched from."
+        },
         "gitsight.remotes.custom": {
           "type": "array",
           "default": [],

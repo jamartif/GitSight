@@ -61,6 +61,7 @@ export class CommitDetailsPanel {
     }</div>
     <div class="sha"><code>${commit.sha}</code> ${parents ? `<span class="muted">parents:</span> ${parents}` : ''}</div>
     <div class="refs">${refs}</div>
+    <div id="origin" class="origin muted">Finding branch…</div>
   </div>
   <pre class="message">${message}</pre>
   <div class="actions">
@@ -89,8 +90,14 @@ export class CommitDetailsPanel {
   .st-M { color: var(--vscode-gitDecoration-modifiedResourceForeground); }
   .st-D { color: var(--vscode-gitDecoration-deletedResourceForeground); }
   .st-R, .st-C { color: var(--vscode-gitDecoration-renamedResourceForeground); }
-  code { font-family: var(--vscode-editor-font-family); }`;
+  code { font-family: var(--vscode-editor-font-family); }
+  .origin { margin-top: 6px; line-height: 1.9; }
+  .origin .label { display: inline-block; min-width: 96px; color: var(--vscode-descriptionForeground); }
+  .origin .hint { font-size: 0.9em; }`;
     const script = `
+window.addEventListener('message', (e) => {
+  if (e.data.type === 'origin') document.getElementById('origin').innerHTML = e.data.html;
+});
 document.addEventListener('click', (e) => {
   const t = e.target.closest('[data-i],[data-action],[data-sha]');
   if (!t) return;
@@ -102,6 +109,48 @@ document.addEventListener('click', (e) => {
 
     this.files = files.map((f) => new FileChangeNode(repo, f, sha, commit.parents.length ? undefined : 'EMPTY'));
     this.ctx = ctx;
+    void this.loadOrigin(repo, sha);
+  }
+
+  private static async loadOrigin(repo: Repository, sha: string): Promise<void> {
+    const badge = (name: string) => `<span class="badge">${escapeHtml(name)}</span>`;
+    const commitLink = (s: string) => `<a data-sha="${s}">${s.substring(0, 7)}</a>`;
+    let html: string;
+    try {
+      const configured = config<string[]>('baseBranches');
+      const o = await repo.branchOrigin(sha, configured?.length ? configured : undefined);
+      const rows: string[] = [];
+      if (o.committedOn) {
+        rows.push(`<span class="label">Branch</span>${badge(o.committedOn)} <span class="hint">committed directly on this branch</span>`);
+      } else {
+        if (o.createdOn.length) {
+          rows.push(`<span class="label">Branch</span>${o.createdOn.map(badge).join('')}`);
+        } else if (o.inferredFrom) {
+          rows.push(
+            `<span class="label">Branch</span>${badge(o.inferredFrom.branch)} <span class="hint">deleted — merged in ${commitLink(o.inferredFrom.mergeSha)}</span>`,
+          );
+        }
+        if (o.branchedFrom) {
+          const b = o.branchedFrom;
+          rows.push(
+            `<span class="label">Branched from</span>${b.branches.map(badge).join('')} <span class="hint">at ${commitLink(b.sha)}, ${b.distance} commit${
+              b.distance === 1 ? '' : 's'
+            } before${b.branches.length > 1 ? ' (these branches pointed to the same commit)' : ''}</span>`,
+          );
+        }
+      }
+      if (o.containedIn.length) {
+        const shown = o.containedIn.slice(0, 6).map(badge).join('');
+        const more = o.containedIn.length > 6 ? ` <span class="hint">+${o.containedIn.length - 6} more</span>` : '';
+        rows.push(`<span class="label">Contained in</span>${shown}${more}`);
+      } else {
+        rows.push(`<span class="label">Contained in</span><span class="hint">no branch (only reachable from tags, stashes or the reflog)</span>`);
+      }
+      html = rows.join('<br>') + (o.committedOn ? '' : `<br><span class="hint">Git doesn't record the original branch; this is inferred from the history.</span>`);
+    } catch {
+      html = '';
+    }
+    if (this.panel && this.state?.sha === sha) await this.panel.webview.postMessage({ type: 'origin', html });
   }
 
   private static files: FileChangeNode[] = [];

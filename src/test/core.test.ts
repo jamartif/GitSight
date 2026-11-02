@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-import { Repository } from '../git/gitService';
+import { Repository, parseMergedBranch } from '../git/gitService';
 import { layoutGraph } from '../git/graphLayout';
 import { parseNameStatus, parseRemotes, parseShortlog, parseWorktrees } from '../git/parsers';
 import { getRemoteProvider, linkifyIssues, parseRemoteUrl } from '../git/remoteProviders';
@@ -205,6 +205,67 @@ test('date helpers', () => {
   assert.equal(fromNow(now - 3 * 86400, now, 'en'), '3 days ago');
   assert.equal(fromNow(now - 10, now, 'en'), 'just now');
   assert.equal(mixColors('#000000', '#ffffff', 0.5), '#808080');
+});
+
+test('branch origin: where a commit was made and where it branched from', async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'gitsight-origin-'));
+  const g = (...args: string[]) => execFileSync('git', args, { cwd: d }).toString().trim();
+  const commit = (msg: string) => {
+    fs.appendFileSync(path.join(d, 'f.txt'), msg + '\n');
+    g('add', '.');
+    g('commit', '-q', '-m', msg);
+    return g('rev-parse', 'HEAD');
+  };
+  g('init', '-q', '-b', 'main');
+  g('config', 'user.name', 'T');
+  g('config', 'user.email', 't@x.io');
+  g('config', 'commit.gpgsign', 'false');
+  const a = commit('A on main');
+  g('switch', '-q', '-c', 'develop');
+  const b = commit('B on develop');
+  g('switch', '-q', '-c', 'feature/login');
+  const c = commit('C on feature');
+  commit('D on feature');
+  g('switch', '-q', 'develop');
+  g('merge', '-q', '--no-ff', '--no-edit', 'feature/login');
+  g('branch', '-q', '-D', 'feature/login');
+  g('switch', '-q', '-c', 'feature/a', 'main');
+  const e = commit('E on feature/a');
+  g('switch', '-q', '-c', 'feature/b');
+  const f = commit('F on feature/b');
+  g('switch', '-q', 'main');
+  const r = new Repository(d);
+
+  assert.equal((await r.branchOrigin(a)).committedOn, 'main');
+  assert.equal((await r.branchOrigin(b)).committedOn, 'develop');
+
+  const oc = await r.branchOrigin(c);
+  assert.equal(oc.committedOn, undefined);
+  assert.deepEqual(oc.createdOn, []);
+  assert.equal(oc.inferredFrom?.branch, 'feature/login', 'deleted branch recovered from merge message');
+  assert.deepEqual(oc.branchedFrom?.branches, ['develop']);
+  assert.equal(oc.branchedFrom?.sha, b);
+  assert.equal(oc.branchedFrom?.distance, 1);
+  assert.deepEqual(oc.containedIn, ['develop']);
+
+  const of = await r.branchOrigin(f);
+  assert.deepEqual(of.createdOn, ['feature/b']);
+  assert.deepEqual(of.branchedFrom?.branches, ['feature/a']);
+  assert.equal(of.branchedFrom?.sha, e);
+
+  const oe = await r.branchOrigin(e);
+  assert.deepEqual(oe.createdOn.sort(), ['feature/a', 'feature/b']);
+  assert.deepEqual(oe.branchedFrom?.branches, ['main', 'develop'], 'ambiguous: A is on both main and develop');
+  assert.equal(oe.branchedFrom?.sha, a);
+  fs.rmSync(d, { recursive: true, force: true });
+});
+
+test('merge message parsing', () => {
+  assert.equal(parseMergedBranch("Merge branch 'feature/x' into develop"), 'feature/x');
+  assert.equal(parseMergedBranch('Merge pull request #42 from acme/fix/login-bug'), 'fix/login-bug');
+  assert.equal(parseMergedBranch("Merge remote-tracking branch 'origin/release/1.2'"), 'release/1.2');
+  assert.equal(parseMergedBranch('Merged PR 123: Add thing from feature/thing'), 'feature/thing');
+  assert.equal(parseMergedBranch('Fix typo'), undefined);
 });
 
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
