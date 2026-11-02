@@ -28,7 +28,7 @@ export class CommitDetailsPanel {
     if (!commit || !this.panel) return;
     const files = await repo.changedFiles(sha);
     const provider = await ctx.getRemoteProvider(repo);
-    const stats = await repo.exec(['show', '--shortstat', '--format=', sha]).then((s) => s.trim(), () => '');
+    const stats = await repo.exec(['show', '--shortstat', '--format=', sha]).then((s) => s.trim().replace(/^\d+ files? changed,?\s*/, ''), () => '');
     this.panel.title = `Commit ${sha.substring(0, 7)}`;
 
     const n = nonce();
