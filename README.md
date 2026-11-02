@@ -89,10 +89,14 @@ Todo está también en la paleta de comandos (`GitSight: …`) y en el menú con
 
 ## Instalación
 
+### Desde GitHub Releases (recomendado)
+1. Descarga el `.vsix` de la última versión en [Releases](https://github.com/jamartif/GitSight/releases).
+2. `code --install-extension gitsight-X.Y.Z.vsix` (o en VS Code: **Extensiones → `…` → Instalar desde VSIX…**).
+
 ### Desde el código
 ```bash
-git clone https://github.com/jamartif/Gitlense.git
-cd Gitlense
+git clone https://github.com/jamartif/GitSight.git
+cd GitSight
 npm install
 npm run package          # genera gitsight-0.1.0.vsix
 code --install-extension gitsight-0.1.0.vsix
@@ -105,6 +109,16 @@ Abre la carpeta en VS Code y pulsa `F5` ("Run GitSight") para lanzar una ventana
 npm run watch   # compilación incremental
 npm test        # tests (parsers, layout del grafo, URLs remotas y un repo git real temporal)
 ```
+
+### Publicar una nueva versión
+Crea y sube un tag con la versión; la GitHub Action `Release` ejecuta los tests, genera el `.vsix` y crea la release con el instalador adjunto:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+La versión del `package.json` se toma automáticamente del tag. Los tags con sufijo (`v0.2.0-beta.1`) se publican como pre-release. También se puede lanzar a mano desde la pestaña **Actions** (crea una release en borrador).
 
 Requisitos: VS Code ≥ 1.90 y `git` en el `PATH`.
 
