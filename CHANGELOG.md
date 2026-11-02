@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - Detalles del commit: muestra la rama donde se hizo el commit, la rama de la que partió (con el commit de origen) y las ramas que lo contienen. Recupera el nombre de ramas borradas a partir del mensaje del merge.
 - Corregido el recuento de archivos duplicado en las estadísticas del commit.
