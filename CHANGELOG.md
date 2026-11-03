@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Seguridad
+- Panel de detalles: un mensaje de commit ya no puede crear enlaces propios (p. ej. `[#1](command:...)`). Solo se enlazan referencias `#123` hacia la URL https de issues del remoto, y el panel tiene `enableCommandUris: false`.
+- Hovers: los enlaces de comando están limitados a los comandos de GitSight.
+- Las revisiones que empiezan por `-` se rechazan antes de llegar a git (evita inyección de opciones como `--output=<archivo>`). La búsqueda por SHA solo acepta hexadecimal.
+- Release workflow: la versión introducida a mano se pasa por variable de entorno en lugar de interpolarse en el script.
+
+### Cambios
+- La búsqueda por autor trata el texto literalmente (`--fixed-strings`), igual que la búsqueda por mensaje.
+- `branchOrigin` cachea el historial de cada rama mientras no cambie su punta y limita a 6 los procesos git simultáneos.
+
 ## 0.2.0
 
 - Detalles del commit: muestra la rama donde se hizo el commit, la rama de la que partió (con el commit de origen) y las ramas que lo contienen. Recupera el nombre de ramas borradas a partir del mensaje del merge.

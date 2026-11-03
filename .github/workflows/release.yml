@@ -31,9 +31,14 @@ jobs:
 
       - name: Resolve version
         id: version
+        # Untrusted values are passed through env and only ever used quoted, never
+        # interpolated into the script text, so they cannot inject shell commands.
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$INPUT_VERSION"
           else
             VERSION="${GITHUB_REF_NAME#v}"
           fi
@@ -48,13 +53,17 @@ jobs:
         run: npm ci
 
       - name: Set extension version
-        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: npm version "$VERSION" --no-git-tag-version --allow-same-version
 
       - name: Test
         run: npm test
 
       - name: Package .vsix
-        run: npx vsce package --out "gitsight-${{ steps.version.outputs.version }}.vsix"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: npx vsce package --out "gitsight-$VERSION.vsix"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

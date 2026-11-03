@@ -20,6 +20,8 @@ function escapeMarkdown(s: string): string {
   return s.replace(/[\\`*_{}[\]()#+\-.!|<>]/g, '\\$&');
 }
 
+const HOVER_COMMANDS = ['gitsight.showCommitDetails', 'gitsight.diffLineWithPrevious', 'gitsight.showLineHistory', 'gitsight.copySha'];
+
 export class BlameHoverProvider implements vscode.HoverProvider {
   constructor(private readonly ctx: GitContext) {}
 
@@ -40,7 +42,9 @@ export class BlameHoverProvider implements vscode.HoverProvider {
     if (!commit) return undefined;
 
     const md = new vscode.MarkdownString('', true);
-    md.isTrusted = true;
+    // Only our own commands may run from hover links; commit text is escaped, but this keeps any
+    // link that slipped through from invoking arbitrary VS Code commands.
+    md.isTrusted = { enabledCommands: HOVER_COMMANDS };
     md.supportHtml = true;
 
     if (isUncommitted(bl.sha)) {

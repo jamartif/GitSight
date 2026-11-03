@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { GitContext, config } from '../context';
 import { Repository } from '../git/gitService';
-import { linkifyIssues } from '../git/remoteProviders';
+import { commitMessageHtml } from './messageHtml';
 import { formatDate, fromNow } from '../utils/date';
 import { FileChangeNode } from '../views/nodes';
 import { escapeHtml, nonce, page } from './html';
@@ -15,7 +15,9 @@ export class CommitDetailsPanel {
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel('gitsight.commitDetails', 'Commit', { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true }, {
         enableScripts: true,
-        enableCommandUris: true,
+        // All interaction goes through postMessage; command: URIs stay disabled so commit
+        // contents can never trigger VS Code commands.
+        enableCommandUris: false,
         retainContextWhenHidden: false,
       });
       this.panel.onDidDispose(() => (this.panel = undefined));
@@ -32,10 +34,7 @@ export class CommitDetailsPanel {
     this.panel.title = `Commit ${sha.substring(0, 7)}`;
 
     const n = nonce();
-    const message = linkifyIssues(escapeHtml(commit.body ? `${commit.subject}\n\n${commit.body}` : commit.subject), provider).replace(
-      /\[#(\d+)\]\(([^)]+)\)/g,
-      '<a href="$2">#$1</a>',
-    );
+    const message = commitMessageHtml(commit.body ? `${commit.subject}\n\n${commit.body}` : commit.subject, provider);
     const refs = commit.refs
       .map((r) => {
         const cls = r.startsWith('HEAD') ? 'head' : r.startsWith('tag: ') ? 'tag' : r.includes('/') ? 'remote' : '';

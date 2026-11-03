@@ -138,15 +138,30 @@ export function getRemoteProvider(url: string, custom: CustomRemote[] = []): Rem
   }
 }
 
-/** Turn issue/PR references (#123) in commit messages into links where possible. */
+/** Base URL for issue links, or undefined when the provider has none (or isn't https). */
+export function issueBaseUrl(provider: RemoteProvider | undefined): string | undefined {
+  if (!provider || !provider.baseUrl.startsWith('https://')) return undefined;
+  if (provider.type === 'github' || provider.type === 'gitea') return `${provider.baseUrl}/issues/`;
+  if (provider.type === 'gitlab') return `${provider.baseUrl}/-/issues/`;
+  return undefined;
+}
+
+const ISSUE_REF = /(^|[\s(])#(\d+)\b/g;
+
+/** Turn issue/PR references (#123) in (already escaped) Markdown into links. */
 export function linkifyIssues(markdown: string, provider: RemoteProvider | undefined): string {
-  if (!provider) return markdown;
-  const issueBase =
-    provider.type === 'github' || provider.type === 'gitea'
-      ? `${provider.baseUrl}/issues/`
-      : provider.type === 'gitlab'
-        ? `${provider.baseUrl}/-/issues/`
-        : undefined;
-  if (!issueBase) return markdown;
-  return markdown.replace(/(^|[\s(])#(\d+)\b/g, (_m, pre, num) => `${pre}[#${num}](${issueBase}${num})`);
+  const base = issueBaseUrl(provider);
+  if (!base) return markdown;
+  return markdown.replace(ISSUE_REF, (_m, pre, num) => `${pre}[#${num}](${base}${num})`);
+}
+
+/**
+ * Turn issue/PR references (#123) in already HTML-escaped text into <a> tags.
+ * Only `#<digits>` is matched and the target is always the provider's https issue URL,
+ * so text written by commit authors can never produce a link of its own.
+ */
+export function linkifyIssuesHtml(escapedHtml: string, provider: RemoteProvider | undefined, escapeAttr: (s: string) => string): string {
+  const base = issueBaseUrl(provider);
+  if (!base) return escapedHtml;
+  return escapedHtml.replace(ISSUE_REF, (_m, pre, num) => `${pre}<a href="${escapeAttr(base + num)}">#${num}</a>`);
 }

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { GitContext } from './context';
-import { GitError, Repository, findRepository } from './git/gitService';
+import { GitError, Repository, findRepository, isSafeRef } from './git/gitService';
 import { Commit, isUncommitted } from './git/models';
 import { FileAnnotations } from './annotations/fileAnnotations';
 import { CommitArgs } from './annotations/hover';
@@ -114,6 +114,11 @@ function refTarget(arg: unknown): { repo: Repository; ref: string; kind: 'branch
   return undefined;
 }
 
+/** Branch / tag names: no spaces or special characters, and never something git would read as an option. */
+function isValidRefName(v: string): boolean {
+  return /^[^\s~^:?*[\\]+$/.test(v) && !v.startsWith('-') && !v.startsWith('/') && !v.endsWith('/') && !v.includes('..');
+}
+
 async function pickRef(repo: Repository, placeHolder: string, includeCommits = false): Promise<string | undefined> {
   const [branches, remoteBranches, tags] = await Promise.all([repo.branches(), repo.branches(true), repo.tags()]);
   type Item = vscode.QuickPickItem & { ref?: string };
@@ -135,7 +140,13 @@ async function pickRef(repo: Repository, placeHolder: string, includeCommits = f
   items.push({ label: '', kind: vscode.QuickPickItemKind.Separator }, { label: '$(edit) Enter a reference…', ref: '__custom__' });
   const pick = await vscode.window.showQuickPick(items, { placeHolder, matchOnDescription: true, matchOnDetail: true });
   if (!pick?.ref) return undefined;
-  if (pick.ref === '__custom__') return (await vscode.window.showInputBox({ prompt: 'Branch, tag, SHA or any git revision' }))?.trim() || undefined;
+  if (pick.ref === '__custom__') {
+    const ref = await vscode.window.showInputBox({
+      prompt: 'Branch, tag, SHA or any git revision',
+      validateInput: (v) => (!v.trim() || isSafeRef(v.trim()) ? undefined : 'A revision cannot start with "-"'),
+    });
+    return ref?.trim() && isSafeRef(ref.trim()) ? ref.trim() : undefined;
+  }
   return pick.ref;
 }
 
@@ -453,7 +464,7 @@ export function registerCommands(context: vscode.ExtensionContext, s: Services):
     if (!repo) return;
     const name = await vscode.window.showInputBox({
       prompt: `New branch name${t ? ` (from ${t.kind === 'commit' ? t.ref.substring(0, 7) : t.ref})` : ''}`,
-      validateInput: (v) => (/^[^\s~^:?*[\\]+$/.test(v) ? undefined : 'Invalid branch name'),
+      validateInput: (v) => (isValidRefName(v) ? undefined : 'Invalid branch name'),
     });
     if (!name) return;
     const checkout = await vscode.window.showQuickPick(['Create and switch', 'Create only'], { placeHolder: 'Switch to the new branch?' });
@@ -486,7 +497,7 @@ export function registerCommands(context: vscode.ExtensionContext, s: Services):
     const t = refTarget(arg);
     const repo = t?.repo ?? (await ctx.getRepository(vscode.window.activeTextEditor?.document.uri));
     if (!repo) return;
-    const name = await vscode.window.showInputBox({ prompt: 'Tag name', validateInput: (v) => (/^[^\s~^:?*[\\]+$/.test(v) ? undefined : 'Invalid tag name') });
+    const name = await vscode.window.showInputBox({ prompt: 'Tag name', validateInput: (v) => (isValidRefName(v) ? undefined : 'Invalid tag name') });
     if (!name) return;
     const message = await vscode.window.showInputBox({ prompt: 'Tag message (leave empty for a lightweight tag)' });
     if (message === undefined) return;

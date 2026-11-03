@@ -96,7 +96,7 @@ export class Repository {
   }
 
   async blameAtRevision(rel: string, ref: string): Promise<BlameResult> {
-    const out = await this.exec(['blame', '--incremental', '-w', ref, '--', rel]);
+    const out = await this.exec(['blame', '--incremental', '-w', assertSafeRef(ref), '--', rel]);
     return parseBlame(out);
   }
 
@@ -116,7 +116,7 @@ export class Repository {
     if (options.topo) args.push('--topo-order');
     if (options.all) args.push('--branches', '--remotes', '--tags', 'HEAD');
     if (options.extra) args.push(...options.extra);
-    if (options.ref) args.push(options.ref);
+    if (options.ref) args.push(assertSafeRef(options.ref));
     args.push('--');
     if (options.file) {
       if (options.follow) args.splice(1, 0, '--follow');
@@ -132,13 +132,13 @@ export class Repository {
   }
 
   async getCommit(sha: string): Promise<Commit | undefined> {
-    const out = await this.exec(['log', '-n1', `--format=${LOG_FORMAT}`, '--decorate=short', sha, '--']);
+    const out = await this.exec(['log', '-n1', `--format=${LOG_FORMAT}`, '--decorate=short', assertSafeRef(sha), '--']);
     return parseLog(out)[0];
   }
 
   async getCommits(shas: string[]): Promise<Commit[]> {
     if (!shas.length) return [];
-    const out = await this.exec(['log', '--no-walk=unsorted', `--format=${LOG_FORMAT}`, '--decorate=short', ...shas, '--']);
+    const out = await this.exec(['log', '--no-walk=unsorted', `--format=${LOG_FORMAT}`, '--decorate=short', ...shas.map(assertSafeRef), '--']);
     return parseLog(out);
   }
 
@@ -153,12 +153,14 @@ export class Repository {
   }
 
   async changedFiles(sha: string): Promise<FileChange[]> {
-    const out = await this.exec(['show', '--name-status', '-z', '--format=', '-M', '--first-parent', sha]);
+    const out = await this.exec(['show', '--name-status', '-z', '--format=', '-M', '--first-parent', assertSafeRef(sha)]);
     return parseNameStatus(out);
   }
 
   async diffFiles(base: string, head: string, threeDot = true): Promise<FileChange[]> {
-    const out = await this.exec(['diff', '--name-status', '-z', '-M', threeDot ? `${base}...${head}` : `${base}..${head}`]);
+    assertSafeRef(base);
+    assertSafeRef(head);
+    const out = await this.exec(['diff', '--name-status', '-z', '-M', threeDot ? `${base}...${head}` : `${base}..${head}`, '--']);
     return parseNameStatus(out);
   }
 
@@ -167,12 +169,12 @@ export class Repository {
       return fs.promises.readFile(path.join(this.root, rel), 'utf8');
     }
     if (ref === ':' || ref === 'INDEX') return this.exec(['show', `:${rel}`]);
-    return this.exec(['show', `${ref}:${rel}`]);
+    return this.exec(['show', `${assertSafeRef(ref)}:${rel}`]);
   }
 
   async fileExistsAt(ref: string, rel: string): Promise<boolean> {
     try {
-      await this.exec(['cat-file', '-e', `${ref}:${rel}`]);
+      await this.exec(['cat-file', '-e', `${assertSafeRef(ref)}:${rel}`]);
       return true;
     } catch {
       return false;
@@ -181,7 +183,7 @@ export class Repository {
 
   /** Returns the previous commit (that touched the file) before `sha`, and the path at that commit. */
   async previousRevision(rel: string, sha?: string): Promise<{ sha: string; path: string } | undefined> {
-    const ref = sha ?? 'HEAD';
+    const ref = assertSafeRef(sha ?? 'HEAD');
     const out = await this.exec(['log', '--follow', '--format=%H', '--name-only', '-n2', ref, '--', rel]).catch(() => '');
     const lines = out.split('\n').filter(Boolean);
     // lines: sha, path, sha, path
@@ -236,6 +238,7 @@ export class Repository {
    *  - if the branch was deleted after merging, its name is recovered from the merge commit message.
    */
   async branchOrigin(sha: string, baseBranches: string[] = DEFAULT_BASE_BRANCHES): Promise<BranchOrigin> {
+    assertSafeRef(sha);
     const LIMIT = 20000;
     const [locals, remotes] = await Promise.all([this.branches(false), this.branches(true)]);
     const localNames = new Set(locals.map((b) => b.name));
@@ -248,13 +251,23 @@ export class Repository {
     const isBase = (b: Branch) => priority(b) !== Number.MAX_SAFE_INTEGER;
     const byPriority = (a: Branch, b: Branch) => priority(a) - priority(b) || Number(b.remote === false) - Number(a.remote === false);
 
+    // First-parent histories are cached per (branch, tip sha): reopening the panel, or moving one
+    // branch, only runs rev-list for branches whose tip changed, and never more than a few at once.
+    let cache = firstParentCache.get(this.root);
+    if (!cache) firstParentCache.set(this.root, (cache = new Map()));
+    const live = new Set(candidates.map((b) => `${b.name}\0${b.sha}`));
+    for (const key of cache.keys()) if (!live.has(key)) cache.delete(key);
     const firstParents = new Map<string, Set<string>>();
-    await Promise.all(
-      candidates.map(async (b) => {
-        const out = await this.exec(['rev-list', '--first-parent', `-n${LIMIT}`, b.name, '--']).catch(() => '');
-        firstParents.set(b.name, new Set(out.split('\n').filter(Boolean)));
-      }),
-    );
+    await mapLimit(candidates, MAX_GIT_PROCESSES, async (b) => {
+      const key = `${b.name}\0${b.sha}`;
+      let set = cache!.get(key);
+      if (!set) {
+        const out = await this.exec(['rev-list', '--first-parent', `-n${FIRST_PARENT_LIMIT}`, b.sha, '--']).catch(() => '');
+        set = new Set(out.split('\n').filter(Boolean));
+        cache!.set(key, set);
+      }
+      firstParents.set(b.name, set);
+    });
     const ancestors = (await this.exec(['rev-list', '--topo-order', `-n${LIMIT}`, sha, '--'])).split('\n').filter(Boolean);
     const containedIn = (await this.exec(['for-each-ref', '--contains', sha, '--format=%(refname)', 'refs/heads', 'refs/remotes']).catch(() => ''))
       .split('\n')
@@ -327,9 +340,11 @@ export class Repository {
       case 'message':
         return this.log({ maxCount, all: true, extra: ['-i', '--fixed-strings', `--grep=${query}`] });
       case 'author':
-        return this.log({ maxCount, all: true, extra: ['-i', `--author=${query}`] });
+        return this.log({ maxCount, all: true, extra: ['-i', '--fixed-strings', `--author=${query}`] });
       case 'sha': {
-        const c = await this.getCommit(query).catch(() => undefined);
+        // Only (abbreviated) hex SHAs: anything else could be parsed by git as an option.
+        if (!/^[0-9a-f]{4,40}$/i.test(query.trim())) return [];
+        const c = await this.getCommit(query.trim().toLowerCase()).catch(() => undefined);
         return c ? [c] : [];
       }
       case 'file':
@@ -345,7 +360,7 @@ export class Repository {
     if (contents !== undefined) {
       // Compare the (possibly unsaved) buffer against the committed version using temp files,
       // so we never write objects into the repository.
-      const base = await this.exec(['show', `${ref}:${rel}`]).catch(() => undefined);
+      const base = await this.exec(['show', `${assertSafeRef(ref)}:${rel}`]).catch(() => undefined);
       if (base === undefined) return { added: [], modified: [], deleted: [] };
       const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'gitsight-'));
       const a = path.join(dir, 'a');
@@ -358,7 +373,7 @@ export class Repository {
         fs.promises.rm(dir, { recursive: true, force: true }).catch(() => undefined);
       }
     } else {
-      out = await this.exec(['diff', '-U0', '--no-color', ref, '--', rel]);
+      out = await this.exec(['diff', '-U0', '--no-color', assertSafeRef(ref), '--', rel]);
     }
     const added: number[] = [];
     const modified: number[] = [];
@@ -378,6 +393,29 @@ export class Repository {
     }
     return { added, modified, deleted };
   }
+}
+
+/** Rejects revisions that git could parse as command-line options (e.g. `--output=<file>`). */
+export function assertSafeRef(ref: string): string {
+  if (!isSafeRef(ref)) throw new GitError(`Invalid revision: ${JSON.stringify(ref)}`, '', []);
+  return ref;
+}
+
+export function isSafeRef(ref: string): boolean {
+  return !!ref && !ref.startsWith('-') && !/[\0\n\r]/.test(ref);
+}
+
+const MAX_GIT_PROCESSES = 6;
+const FIRST_PARENT_LIMIT = 10000;
+const firstParentCache = new Map<string, Map<string, Set<string>>>();
+
+/** Runs `fn` over `items` with at most `limit` calls in flight. */
+export async function mapLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) await fn(items[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
 
 export const DEFAULT_BASE_BRANCHES = ['main', 'master', 'trunk', 'develop', 'development', 'dev'];
