@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1
 
 ### Seguridad
 - Panel de detalles: un mensaje de commit ya no puede crear enlaces propios (p. ej. `[#1](command:...)`). Solo se enlazan referencias `#123` hacia la URL https de issues del remoto, y el panel tiene `enableCommandUris: false`.
