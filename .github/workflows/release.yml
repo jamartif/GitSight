@@ -36,6 +36,7 @@ jobs:
         env:
           INPUT_VERSION: ${{ github.event.inputs.version }}
           EVENT_NAME: ${{ github.event_name }}
+        shell: bash
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             VERSION="$INPUT_VERSION"
@@ -43,8 +44,10 @@ jobs:
             VERSION="${GITHUB_REF_NAME#v}"
           fi
           VERSION="${VERSION#v}"
-          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
-            echo "::error::Invalid version '$VERSION'. Use tags like v1.2.3"
+          # [[ =~ ]] matches the whole string. grep would test it line by line, so
+          # "1.2.3<newline>other=x" would pass and inject an extra output below.
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid version. Use tags like v1.2.3"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"

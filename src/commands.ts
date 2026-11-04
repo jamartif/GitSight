@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { GitContext } from './context';
-import { GitError, Repository, findRepository, isSafeRef } from './git/gitService';
+import { GitError, Repository, findRepository, isSafeRef, isValidRefName } from './git/gitService';
 import { Commit, isUncommitted } from './git/models';
 import { FileAnnotations } from './annotations/fileAnnotations';
 import { CommitArgs } from './annotations/hover';
@@ -112,11 +112,6 @@ function refTarget(arg: unknown): { repo: Repository; ref: string; kind: 'branch
   const a = arg as Partial<CommitArgs> | undefined;
   if (a && typeof a === 'object' && a.repo && a.sha) return { repo: new Repository(a.repo), ref: a.sha, kind: 'commit' };
   return undefined;
-}
-
-/** Branch / tag names: no spaces or special characters, and never something git would read as an option. */
-function isValidRefName(v: string): boolean {
-  return /^[^\s~^:?*[\\]+$/.test(v) && !v.startsWith('-') && !v.startsWith('/') && !v.endsWith('/') && !v.includes('..');
 }
 
 async function pickRef(repo: Repository, placeHolder: string, includeCommits = false): Promise<string | undefined> {
@@ -464,7 +459,7 @@ export function registerCommands(context: vscode.ExtensionContext, s: Services):
     if (!repo) return;
     const name = await vscode.window.showInputBox({
       prompt: `New branch name${t ? ` (from ${t.kind === 'commit' ? t.ref.substring(0, 7) : t.ref})` : ''}`,
-      validateInput: (v) => (isValidRefName(v) ? undefined : 'Invalid branch name'),
+      validateInput: async (v) => ((await isValidRefName('branch', v)) ? undefined : 'Invalid branch name'),
     });
     if (!name) return;
     const checkout = await vscode.window.showQuickPick(['Create and switch', 'Create only'], { placeHolder: 'Switch to the new branch?' });
@@ -497,7 +492,7 @@ export function registerCommands(context: vscode.ExtensionContext, s: Services):
     const t = refTarget(arg);
     const repo = t?.repo ?? (await ctx.getRepository(vscode.window.activeTextEditor?.document.uri));
     if (!repo) return;
-    const name = await vscode.window.showInputBox({ prompt: 'Tag name', validateInput: (v) => (isValidRefName(v) ? undefined : 'Invalid tag name') });
+    const name = await vscode.window.showInputBox({ prompt: 'Tag name', validateInput: async (v) => ((await isValidRefName('tag', v)) ? undefined : 'Invalid tag name') });
     if (!name) return;
     const message = await vscode.window.showInputBox({ prompt: 'Tag message (leave empty for a lightweight tag)' });
     if (message === undefined) return;
