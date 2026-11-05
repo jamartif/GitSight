@@ -6,3 +6,6 @@ out/test/**
 tsconfig.json
 .gitignore
 node_modules/**
+.github/**
+.claude/**
+package-lock.json

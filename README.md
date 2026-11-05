@@ -148,6 +148,8 @@ src/
 
 ## License
 
-MIT — use it, modify it and share it freely.
+[MIT](LICENSE) © jamartif — use it, modify it and share it freely. GitSight has no runtime dependencies besides VS Code and your `git`.
+
+Issues and suggestions: [github.com/jamartif/GitSight/issues](https://github.com/jamartif/GitSight/issues).
 
 > GitSight is an independent project and is not affiliated with GitLens or GitKraken.
