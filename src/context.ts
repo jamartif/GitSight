@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BlameCommit, BlameResult, Commit } from './git/models';
-import { Repository, findRepository, clearRepositoryCache } from './git/gitService';
+import { Repository, findRepository, clearRepositoryCache, clearFirstParentCache } from './git/gitService';
 import { CustomRemote, RemoteProvider, getRemoteProvider } from './git/remoteProviders';
 import { formatDate, fromNow } from './utils/date';
 
@@ -32,8 +32,10 @@ export class GitContext implements vscode.Disposable {
     this.disposables.push(
       vscode.workspace.onDidCloseTextDocument((d) => this.blameCache.delete(d.uri.toString())),
       vscode.workspace.onDidSaveTextDocument(() => this.scheduleRefresh()),
-      vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      vscode.workspace.onDidChangeWorkspaceFolders((e) => {
         clearRepositoryCache();
+        // A folder was closed: its repositories' first-parent histories are no longer needed.
+        if (e.removed.length) clearFirstParentCache();
         this.scheduleRefresh();
       }),
     );
@@ -104,6 +106,7 @@ export class GitContext implements vscode.Disposable {
   }
 
   dispose(): void {
+    clearFirstParentCache();
     this.disposables.forEach((d) => d.dispose());
     this._onDidChangeRepository.dispose();
   }
