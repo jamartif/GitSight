@@ -1,6 +1,6 @@
 # Changelog
 
-## Sin publicar
+## 0.2.2
 
 ### Seguridad
 - Release workflow: la versión se valida como cadena completa (`[[ =~ ]]`) antes de escribirla en `$GITHUB_OUTPUT`; con `grep` una versión con salto de línea podía añadir otros outputs.
