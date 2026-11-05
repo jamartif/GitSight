@@ -1,5 +1,15 @@
 # Changelog
 
+## Sin publicar
+
+### Seguridad
+- Release workflow: la versión se valida como cadena completa (`[[ =~ ]]`) antes de escribirla en `$GITHUB_OUTPUT`; con `grep` una versión con salto de línea podía añadir otros outputs.
+- Los nombres de rama y tag se validan con `git check-ref-format`, que rechaza nombres como `rama.lock` o `a/.b`.
+
+### Cambios
+- La caché de historiales de `branchOrigin` tiene un límite (500.000 SHAs, descartando lo menos usado) y se vacía al cerrar una carpeta del workspace.
+- `branchOrigin` usa el mismo límite (20.000 commits) para la ascendencia del commit y para el historial first-parent de cada rama, así que ya no pierde la rama de commits antiguos en historiales largos.
+
 ## 0.2.1
 
 ### Seguridad

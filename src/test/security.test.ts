@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-import { Repository, mapLimit } from '../git/gitService';
+import { FirstParentCache, Repository, isValidRefName, mapLimit } from '../git/gitService';
 import { getRemoteProvider } from '../git/remoteProviders';
 import { commitMessageHtml } from '../webviews/messageHtml';
 
@@ -119,4 +119,37 @@ test('branchOrigin cache is invalidated when a branch moves', async () => {
   g('merge', '-q', '--ff-only', 'feature/x');
   assert.equal((await repo.branchOrigin(sha)).committedOn, 'main', 'moved branch is re-read');
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('first-parent cache is bounded by SHAs, evicts the least recently used and clears per repo', () => {
+  const shas = (n: number, p: string) => new Set(Array.from({ length: n }, (_, i) => `${p}${i}`));
+  const cache = new FirstParentCache(10);
+  cache.set('/a', 'main\0x', shas(4, 'm'));
+  cache.set('/a', 'dev\0y', shas(4, 'd'));
+  assert.ok(cache.get('/a', 'main\0x'), 'main is now the most recently used');
+  cache.set('/b', 'main\0z', shas(4, 'b'));
+  assert.equal(cache.get('/a', 'dev\0y'), undefined, 'least recently used entry evicted');
+  assert.ok(cache.get('/a', 'main\0x'));
+  assert.equal(cache.size, 8);
+
+  cache.clear('/a');
+  assert.equal(cache.get('/a', 'main\0x'), undefined);
+  assert.ok(cache.get('/b', 'main\0z'), 'other repositories are kept');
+  assert.equal(cache.size, 4);
+
+  // An entry larger than the whole budget is still kept until the next insert.
+  cache.set('/c', 'big\0w', shas(20, 'c'));
+  assert.ok(cache.get('/c', 'big\0w'));
+  assert.equal(cache.get('/b', 'main\0z'), undefined);
+  cache.clear();
+  assert.equal(cache.size, 0);
+});
+
+test('ref names are validated by git check-ref-format', async () => {
+  for (const ok of ['feature/x', 'v1.2.3', 'fix-123', 'a.b']) assert.equal(await isValidRefName('branch', ok), true, ok);
+  for (const bad of ['rama.lock', 'a/.b', 'a..b', 'a b', 'x@{1}', '-x', '--output=/tmp/x', '', 'HEAD', 'a/', '@{-1}', 'a\nb']) {
+    assert.equal(await isValidRefName('branch', bad), false, JSON.stringify(bad));
+  }
+  assert.equal(await isValidRefName('tag', 'v1.0.0'), true);
+  assert.equal(await isValidRefName('tag', 'v1.lock'), false);
 });

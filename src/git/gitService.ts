@@ -239,7 +239,6 @@ export class Repository {
    */
   async branchOrigin(sha: string, baseBranches: string[] = DEFAULT_BASE_BRANCHES): Promise<BranchOrigin> {
     assertSafeRef(sha);
-    const LIMIT = 20000;
     const [locals, remotes] = await Promise.all([this.branches(false), this.branches(true)]);
     const localNames = new Set(locals.map((b) => b.name));
     const shortName = (b: Branch) => (b.remote ? b.name.substring(b.name.indexOf('/') + 1) : b.name);
@@ -253,22 +252,19 @@ export class Repository {
 
     // First-parent histories are cached per (branch, tip sha): reopening the panel, or moving one
     // branch, only runs rev-list for branches whose tip changed, and never more than a few at once.
-    let cache = firstParentCache.get(this.root);
-    if (!cache) firstParentCache.set(this.root, (cache = new Map()));
-    const live = new Set(candidates.map((b) => `${b.name}\0${b.sha}`));
-    for (const key of cache.keys()) if (!live.has(key)) cache.delete(key);
+    firstParentCache.retainForRoot(this.root, new Set(candidates.map((b) => `${b.name}\0${b.sha}`)));
     const firstParents = new Map<string, Set<string>>();
     await mapLimit(candidates, MAX_GIT_PROCESSES, async (b) => {
       const key = `${b.name}\0${b.sha}`;
-      let set = cache!.get(key);
+      let set = firstParentCache.get(this.root, key);
       if (!set) {
-        const out = await this.exec(['rev-list', '--first-parent', `-n${FIRST_PARENT_LIMIT}`, b.sha, '--']).catch(() => '');
+        const out = await this.exec(['rev-list', '--first-parent', `-n${HISTORY_LIMIT}`, b.sha, '--']).catch(() => '');
         set = new Set(out.split('\n').filter(Boolean));
-        cache!.set(key, set);
+        firstParentCache.set(this.root, key, set);
       }
       firstParents.set(b.name, set);
     });
-    const ancestors = (await this.exec(['rev-list', '--topo-order', `-n${LIMIT}`, sha, '--'])).split('\n').filter(Boolean);
+    const ancestors = (await this.exec(['rev-list', '--topo-order', `-n${HISTORY_LIMIT}`, sha, '--'])).split('\n').filter(Boolean);
     const containedIn = (await this.exec(['for-each-ref', '--contains', sha, '--format=%(refname)', 'refs/heads', 'refs/remotes']).catch(() => ''))
       .split('\n')
       .filter((r) => r && !r.endsWith('/HEAD'))
@@ -406,8 +402,98 @@ export function isSafeRef(ref: string): boolean {
 }
 
 const MAX_GIT_PROCESSES = 6;
-const FIRST_PARENT_LIMIT = 10000;
-const firstParentCache = new Map<string, Map<string, Set<string>>>();
+/**
+ * How far back branchOrigin looks, both in the commit's ancestry and in each branch's
+ * first-parent chain. One constant, so an old commit inside the ancestry window is never
+ * missed because the first-parent window was shorter.
+ */
+export const HISTORY_LIMIT = 20000;
+
+/**
+ * Least-recently-used cache of first-parent histories, keyed by (repo root, branch, tip sha).
+ * It is bounded by the total number of SHAs it holds, not by entries, since one entry can hold
+ * up to HISTORY_LIMIT of them: the oldest entries are dropped once the budget is exceeded.
+ */
+export class FirstParentCache {
+  private readonly entries = new Map<string, Set<string>>();
+  private total = 0;
+
+  constructor(readonly maxShas: number) {}
+
+  get size(): number {
+    return this.total;
+  }
+
+  get(root: string, key: string): Set<string> | undefined {
+    const k = `${root}\0${key}`;
+    const set = this.entries.get(k);
+    if (set) {
+      // Re-insert to mark as most recently used (Map keeps insertion order).
+      this.entries.delete(k);
+      this.entries.set(k, set);
+    }
+    return set;
+  }
+
+  set(root: string, key: string, set: Set<string>): void {
+    const k = `${root}\0${key}`;
+    this.remove(k);
+    this.entries.set(k, set);
+    this.total += set.size;
+    for (const oldest of this.entries.keys()) {
+      if (this.total <= this.maxShas || oldest === k) break;
+      this.remove(oldest);
+    }
+  }
+
+  /** Drops this root's entries whose key is not in `live` (branches that moved or were deleted). */
+  retainForRoot(root: string, live: Set<string>): void {
+    const prefix = `${root}\0`;
+    for (const k of [...this.entries.keys()]) {
+      if (k.startsWith(prefix) && !live.has(k.substring(prefix.length))) this.remove(k);
+    }
+  }
+
+  /** Forgets one repository (it was closed), or everything when no root is given. */
+  clear(root?: string): void {
+    if (root === undefined) {
+      this.entries.clear();
+      this.total = 0;
+      return;
+    }
+    this.retainForRoot(root, new Set());
+  }
+
+  private remove(k: string): void {
+    const set = this.entries.get(k);
+    if (!set) return;
+    this.entries.delete(k);
+    this.total -= set.size;
+  }
+}
+
+/** ~500k SHAs is a few tens of MB: enough for every branch of a large repo, or several small ones. */
+const firstParentCache = new FirstParentCache(500_000);
+
+export function clearFirstParentCache(root?: string): void {
+  firstParentCache.clear(root);
+}
+
+/**
+ * Exact branch / tag name validation, delegated to `git check-ref-format` (it rejects names such
+ * as `x.lock`, `a/.b` or `@{`, which a regex easily lets through). The name is checked as a full
+ * `refs/heads/…` or `refs/tags/…` ref rather than with `--branch`, which would also accept and
+ * expand `@{-1}`. Names git could read as an option are rejected before git is called.
+ */
+export async function isValidRefName(kind: 'branch' | 'tag', name: string): Promise<boolean> {
+  if (!isSafeRef(name) || (kind === 'branch' && name === 'HEAD')) return false;
+  try {
+    await git(['check-ref-format', `refs/${kind === 'branch' ? 'heads' : 'tags'}/${name}`], { cwd: os.tmpdir() });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Runs `fn` over `items` with at most `limit` calls in flight. */
 export async function mapLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
