@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.4
+
+- README, CHANGELOG and release notes in English.
+- Marketplace metadata: links to the issue tracker and homepage, gallery banner, pricing and more keywords.
+
 ## 0.2.3
 
 - The extension ID is now `jamartif.gitsight-free`, because `gitsight` was already taken in the Visual Studio Marketplace. Settings (`gitsight.*`), commands and views are unchanged. If you installed an earlier version from a `.vsix`, uninstall it first so you do not end up with both.
