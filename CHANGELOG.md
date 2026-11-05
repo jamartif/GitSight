@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3
+
+- El identificador de la extensión pasa a ser `jamartif.gitsight-free`, porque `gitsight` ya estaba ocupado en el Visual Studio Marketplace. Los ajustes (`gitsight.*`), comandos y vistas no cambian. Si instalaste una versión anterior desde un `.vsix`, desinstálala antes para no tener las dos.
+
 ## 0.2.2
 
 ### Seguridad

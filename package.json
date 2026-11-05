@@ -1,8 +1,8 @@
 {
-  "name": "gitsight",
+  "name": "gitsight-free",
   "displayName": "GitSight — Free Git Supercharged",
   "description": "100% free and open-source Git superpowers for VS Code: inline blame, hovers, CodeLens, heatmaps, file & line history, commit graph, branches, tags, stashes, worktrees, contributors, commit search, remote links and more. No accounts, no paywalls, no telemetry.",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "publisher": "jamartif",
   "license": "MIT",
   "icon": "resources/icon.png",
