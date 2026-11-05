@@ -1,150 +1,155 @@
-# GitSight — Git superpoderes 100 % gratis para VS Code
+# GitSight — 100% free Git superpowers for VS Code
 
-GitSight es una extensión **gratuita y de código abierto (MIT)** inspirada en el tipo de herramientas como GitLens: te muestra quién cambió cada línea, cuándo y por qué, y te da vistas completas del historial, ramas, stashes, worktrees y un grafo de commits interactivo.
+GitSight is a **free and open-source (MIT)** extension inspired by tools such as GitLens: it shows who changed each line, when and why, and gives you full views of history, branches, stashes, worktrees and an interactive commit graph.
 
-- ✅ Sin cuentas, sin suscripciones, sin funciones "Pro" bloqueadas
-- ✅ Sin telemetría ni conexiones a servidores propios: solo usa el `git` instalado en tu equipo
-- ✅ Funciona con repositorios públicos **y privados**
+- ✅ No accounts, no subscriptions, no locked "Pro" features
+- ✅ No telemetry and no connections to third-party servers: it only uses the `git` installed on your machine
+- ✅ Works with public **and private** repositories
 
-![Grafo de commits](docs/commit-graph.png)
+![Commit graph](docs/commit-graph.png)
 
-![Detalles del commit](docs/commit-details.png)
+![Commit details](docs/commit-details.png)
 
-## Funcionalidades
+## Features
 
-### En el editor
-| Función | Descripción |
+### In the editor
+| Feature | Description |
 |---|---|
-| **Blame de la línea actual** | Autor, fecha y mensaje al final de la línea donde está el cursor (también con multicursor). |
-| **Blame en la barra de estado** | Autor y fecha de la línea actual; clic para ver el commit. |
-| **Hovers enriquecidos** | Autor, email, fecha, mensaje completo (con enlaces a issues `#123`), refs y accesos a: detalles del commit, cambios, historial de la línea, copiar SHA y abrir en GitHub/GitLab/… |
-| **CodeLens** | "Cambio más reciente" y "N autores" encima del archivo y de cada clase/función/método. |
-| **Blame de archivo completo** (`Alt+B`) | Anotación lateral con fecha y autor de cada bloque. |
-| **Heatmap** (`Alt+H`) | Barra de color por antigüedad del código (colores configurables). |
-| **Cambios del archivo** | Resalta líneas añadidas, modificadas y borradas respecto al commit anterior o a HEAD. |
-| **Funciona con cambios sin guardar** | El blame se recalcula sobre el contenido del buffer. |
+| **Current line blame** | Author, date and message at the end of the line under the cursor (multi-cursor too). |
+| **Status bar blame** | Author and date of the current line; click to see the commit. |
+| **Rich hovers** | Author, email, date, full message (with links to `#123` issues), refs and shortcuts to: commit details, changes, line history, copy SHA and open on GitHub/GitLab/… |
+| **CodeLens** | "Most recent change" and "N authors" above the file and each class/function/method. |
+| **Full file blame** (`Alt+B`) | Side annotation with the date and author of each block. |
+| **Heatmap** (`Alt+H`) | Color bar by code age (configurable colors). |
+| **File changes** | Highlights added, modified and deleted lines against the previous commit or HEAD. |
+| **Works with unsaved changes** | Blame is recomputed on the buffer contents. |
 
-### Vistas laterales (icono GitSight en la barra de actividades)
-- **Commits** — historial de la rama actual, con commits entrantes/salientes respecto al upstream.
-- **File History** — historial del archivo activo (sigue renombrados) + cambios sin confirmar.
-- **Line History** — historial de las líneas seleccionadas (`git log -L`).
-- **Branches** — ramas locales con ahead/behind, upstream y commits.
-- **Remotes** — remotos y sus ramas.
-- **Tags**, **Stashes** (con archivos), **Worktrees**, **Contributors** (con % de commits).
-- **Search & Compare** — busca commits por mensaje, autor, SHA, archivo (globs) o cambios en el código (`-G`), y compara ramas/tags/commits (commits de cada lado + archivos cambiados).
+### Side views (GitSight icon in the Activity Bar)
+- **Commits** — history of the current branch, with incoming/outgoing commits against the upstream.
+- **File History** — history of the active file (follows renames) + uncommitted changes.
+- **Line History** — history of the selected lines (`git log -L`).
+- **Branches** — local branches with ahead/behind, upstream and commits.
+- **Remotes** — remotes and their branches.
+- **Tags**, **Stashes** (with files), **Worktrees**, **Contributors** (with % of commits).
+- **Search & Compare** — search commits by message, author, SHA, file (globs) or code changes (`-G`), and compare branches/tags/commits (commits on each side + changed files).
 
-Cada commit se expande para ver sus archivos; un clic abre el diff.
+Each commit expands to show its files; a click opens the diff.
 
-### Grafo de commits (`Ctrl+Alt+G`)
-Grafo interactivo con carriles de colores, merges, badges de ramas/tags/HEAD, filtro por texto, todas las ramas o solo la actual, paginación y acciones rápidas (checkout, crear rama, cherry-pick, copiar SHA). Clic en un commit → panel de detalles.
+### Commit graph (`Ctrl+Alt+G`)
+Interactive graph with colored lanes, merges, branch/tag/HEAD badges, text filter, all branches or only the current one, pagination and quick actions (checkout, create branch, cherry-pick, copy SHA). Click a commit → details panel.
 
-### Panel de detalles del commit
-Autor, committer, fechas, padres navegables, **rama en la que se hizo el commit y rama de la que partió** (por ejemplo `feature/login` → partió de `develop`, incluso si la rama ya se borró tras el merge), ramas que lo contienen, mensaje con enlaces a issues, estadísticas y lista de archivos (clic = diff), y botones para copiar SHA/mensaje, abrir en remoto, checkout, cherry-pick, revert, crear rama o tag.
+### Commit details panel
+Author, committer, dates, navigable parents, **the branch the commit was made on and the branch it branched from** (for example `feature/login` → branched from `develop`, even if the branch was deleted after the merge), branches that contain it, message with issue links, stats and file list (click = diff), and buttons to copy SHA/message, open on the remote, checkout, cherry-pick, revert, create a branch or a tag.
 
-### Comparaciones y navegación
-- Abrir cambios con la revisión anterior (`Alt+,`), con el archivo de trabajo, con cualquier revisión o con cualquier rama/tag.
-- Abrir los cambios de la línea actual con su revisión anterior.
-- Abrir un archivo en una revisión concreta.
-- Navegar hacia atrás en el historial desde un archivo de revisión.
+### Comparisons and navigation
+- Open changes against the previous revision (`Alt+,`), the working file, any revision or any branch/tag.
+- Open the changes of the current line against its previous revision.
+- Open a file at a specific revision.
+- Navigate back through history from a revision file.
 
-### Remotos soportados
-GitHub (incl. Enterprise), GitLab (incl. self-hosted), Bitbucket, Azure DevOps y Gitea/Forgejo/Codeberg.
-Abrir archivo/selección, commit o repositorio en el navegador y copiar URL remota. Para servidores propios:
+### Supported remotes
+GitHub (incl. Enterprise), GitLab (incl. self-hosted), Bitbucket, Azure DevOps and Gitea/Forgejo/Codeberg.
+Open a file/selection, commit or repository in the browser and copy the remote URL. For self-hosted servers:
 
 ```json
-"gitsight.remotes.custom": [{ "domain": "git.miempresa.com", "type": "gitlab" }]
+"gitsight.remotes.custom": [{ "domain": "git.mycompany.com", "type": "gitlab" }]
 ```
 
-### Acciones Git
-Checkout/switch (también de ramas remotas con tracking), crear/borrar ramas, merge, rebase, crear/borrar tags (ligeros o anotados), cherry-pick, revert, reset (soft/mixed/hard), stash (guardar, aplicar, pop, borrar), fetch y crear/abrir/eliminar worktrees. Las acciones destructivas siempre piden confirmación.
+### Git actions
+Checkout/switch (including remote branches with tracking), create/delete branches, merge, rebase, create/delete tags (lightweight or annotated), cherry-pick, revert, reset (soft/mixed/hard), stash (save, apply, pop, drop), fetch and create/open/remove worktrees. Destructive actions always ask for confirmation.
 
-## Atajos de teclado
+## Keyboard shortcuts
 
-| Atajo | Acción |
+| Shortcut | Action |
 |---|---|
-| `Alt+B` | Activar/desactivar blame del archivo |
-| `Alt+H` | Activar/desactivar heatmap |
-| `Alt+C` | Mostrar commit de la línea actual |
-| `Alt+,` | Abrir cambios con la revisión anterior |
-| `Ctrl+Alt+G` / `Cmd+Alt+G` | Abrir grafo de commits |
+| `Alt+B` | Toggle file blame |
+| `Alt+H` | Toggle heatmap |
+| `Alt+C` | Show the commit of the current line |
+| `Alt+,` | Open changes against the previous revision |
+| `Ctrl+Alt+G` / `Cmd+Alt+G` | Open the commit graph |
 
-Todo está también en la paleta de comandos (`GitSight: …`) y en el menú contextual del editor → **GitSight**.
+Everything is also in the Command Palette (`GitSight: …`) and in the editor context menu → **GitSight**.
 
-## Configuración
+## Settings
 
-| Ajuste | Por defecto | Descripción |
+| Setting | Default | Description |
 |---|---|---|
-| `gitsight.currentLine.enabled` | `true` | Blame al final de la línea actual |
+| `gitsight.currentLine.enabled` | `true` | Blame at the end of the current line |
 | `gitsight.currentLine.format` | `${author}, ${agoOrDate} • ${message}` | Tokens: `${author}`, `${email}`, `${date}`, `${ago}`, `${agoOrDate}`, `${message}`, `${sha}`, `${shortSha}` |
-| `gitsight.statusBar.enabled` | `true` | Blame en la barra de estado |
-| `gitsight.statusBar.format` | `$(git-commit) ${author}, ${ago}` | Mismo formato, admite codicons |
-| `gitsight.hovers.enabled` | `true` | Hovers con detalles del commit |
-| `gitsight.hovers.currentLineOnly` | `true` | Hover solo sobre la anotación de la línea actual |
-| `gitsight.codeLens.enabled` | `true` | CodeLens de autoría |
-| `gitsight.codeLens.scope` | `symbols` | `document` o `symbols` |
-| `gitsight.dateStyle` | `relative` | `relative` o `absolute` |
-| `gitsight.dateFormat` | `""` | Formato absoluto (`YYYY-MM-DD HH:mm`); vacío = idioma del sistema |
-| `gitsight.heatmap.hotColor` / `coldColor` | `#f66a0a` / `#0a60f6` | Colores del heatmap |
-| `gitsight.heatmap.ageThresholdDays` | `90` | Días para considerar un cambio "caliente" |
-| `gitsight.views.maxCommits` | `200` | Commits cargados por página |
-| `gitsight.baseBranches` | `["main","master","trunk","develop","development","dev"]` | Ramas principales, por prioridad, usadas para deducir de qué rama partió cada commit |
-| `gitsight.remotes.custom` | `[]` | Proveedores para dominios propios |
+| `gitsight.statusBar.enabled` | `true` | Blame in the status bar |
+| `gitsight.statusBar.format` | `$(git-commit) ${author}, ${ago}` | Same format, supports codicons |
+| `gitsight.hovers.enabled` | `true` | Hovers with commit details |
+| `gitsight.hovers.currentLineOnly` | `true` | Hover only over the current line annotation |
+| `gitsight.codeLens.enabled` | `true` | Authorship CodeLens |
+| `gitsight.codeLens.scope` | `symbols` | `document` or `symbols` |
+| `gitsight.dateStyle` | `relative` | `relative` or `absolute` |
+| `gitsight.dateFormat` | `""` | Absolute format (`YYYY-MM-DD HH:mm`); empty = system locale |
+| `gitsight.heatmap.hotColor` / `coldColor` | `#f66a0a` / `#0a60f6` | Heatmap colors |
+| `gitsight.heatmap.ageThresholdDays` | `90` | Days for a change to count as "hot" |
+| `gitsight.views.maxCommits` | `200` | Commits loaded per page |
+| `gitsight.baseBranches` | `["main","master","trunk","develop","development","dev"]` | Main branches, by priority, used to infer which branch each commit branched from |
+| `gitsight.remotes.custom` | `[]` | Providers for self-hosted domains |
 
-## Instalación
+## Installation
 
-### Desde GitHub Releases (recomendado)
-1. Descarga el `.vsix` de la última versión en [Releases](https://github.com/jamartif/GitSight/releases).
-2. `code --install-extension gitsight-X.Y.Z.vsix` (o en VS Code: **Extensiones → `…` → Instalar desde VSIX…**).
+### From the Visual Studio Marketplace
+Search for **GitSight** in the Extensions view, or install the extension `jamartif.gitsight-free`.
 
-### Desde el código
+### From GitHub Releases
+1. Download the `.vsix` of the latest version from [Releases](https://github.com/jamartif/GitSight/releases).
+2. `code --install-extension gitsight-X.Y.Z.vsix` (or in VS Code: **Extensions → `…` → Install from VSIX…**).
+
+### From source
 ```bash
 git clone https://github.com/jamartif/GitSight.git
 cd GitSight
 npm install
-npm run package          # genera gitsight-0.1.0.vsix
-code --install-extension gitsight-0.1.0.vsix
+npm run package          # creates gitsight-free-<version>.vsix
+code --install-extension gitsight-free-<version>.vsix
 ```
 
-### Desarrollo
-Abre la carpeta en VS Code y pulsa `F5` ("Run GitSight") para lanzar una ventana de desarrollo con la extensión cargada.
+### Development
+Open the folder in VS Code and press `F5` ("Run GitSight") to launch a development window with the extension loaded.
 
 ```bash
-npm run watch   # compilación incremental
-npm test        # tests (parsers, layout del grafo, URLs remotas y un repo git real temporal)
+npm run watch   # incremental build
+npm test        # tests (parsers, graph layout, remote URLs and a real temporary git repo)
 ```
 
-### Publicar una nueva versión
-Crea y sube un tag con la versión; la GitHub Action `Release` ejecuta los tests, genera el `.vsix` y crea la release con el instalador adjunto:
+### Publishing a new version
+Create and push a tag with the version; the `Release` GitHub Action runs the tests, builds the `.vsix` and creates the release with the installer attached:
 
 ```bash
 git tag v0.2.0
 git push origin v0.2.0
 ```
 
-La versión del `package.json` se toma automáticamente del tag. Los tags con sufijo (`v0.2.0-beta.1`) se publican como pre-release. También se puede lanzar a mano desde la pestaña **Actions** (crea una release en borrador).
+The `package.json` version is taken from the tag automatically. Tags with a suffix (`v0.2.0-beta.1`) are published as pre-releases. It can also be run by hand from the **Actions** tab (it creates a draft release; publishing the draft creates the tag).
 
-Requisitos: VS Code ≥ 1.90 y `git` en el `PATH`.
+Requirements: VS Code ≥ 1.90 and `git` on the `PATH`.
 
-## Arquitectura
+## Architecture
 
 ```
 src/
-  extension.ts            activación y registro de vistas
-  commands.ts             todos los comandos
-  context.ts              repositorio activo, caché de blame, formato
-  uris.ts                 esquema gitsight: para ver archivos en cualquier revisión
+  extension.ts            activation and view registration
+  commands.ts             all commands
+  context.ts              active repository, blame cache, formatting
+  uris.ts                 gitsight: scheme to view files at any revision
   git/
-    gitService.ts         wrapper tipado sobre la CLI de git
-    parsers.ts            parsers puros (blame, log, refs, stashes, worktrees…)
-    graphLayout.ts        algoritmo de carriles del grafo
-    remoteProviders.ts    URLs de GitHub/GitLab/Bitbucket/Azure/Gitea
-  annotations/            blame de línea, hovers, CodeLens, blame/heatmap/cambios de archivo
-  views/                  vistas de árbol
-  webviews/               grafo de commits y detalles del commit
+    gitService.ts         typed wrapper over the git CLI
+    parsers.ts            pure parsers (blame, log, refs, stashes, worktrees…)
+    graphLayout.ts        graph lane algorithm
+    remoteProviders.ts    GitHub/GitLab/Bitbucket/Azure/Gitea URLs
+  annotations/            line blame, hovers, CodeLens, file blame/heatmap/changes
+  views/                  tree views
+  webviews/               commit graph and commit details
 ```
 
-## Licencia
+## License
 
-MIT — úsala, modifícala y compártela libremente.
+[MIT](LICENSE) © jamartif — use it, modify it and share it freely. GitSight has no runtime dependencies besides VS Code and your `git`.
 
-> GitSight es un proyecto independiente y no está afiliado a GitLens ni a GitKraken.
+Issues and suggestions: [github.com/jamartif/GitSight/issues](https://github.com/jamartif/GitSight/issues).
+
+> GitSight is an independent project and is not affiliated with GitLens or GitKraken.

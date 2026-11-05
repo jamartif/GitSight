@@ -84,11 +84,11 @@ jobs:
           generate_release_notes: true
           files: gitsight-${{ steps.version.outputs.version }}.vsix
           body: |
-            ## Instalación
+            ## Installation
 
-            1. Descarga `gitsight-${{ steps.version.outputs.version }}.vsix` de los archivos de esta release.
-            2. Instálalo:
+            1. Download `gitsight-${{ steps.version.outputs.version }}.vsix` from this release's assets.
+            2. Install it:
                ```bash
                code --install-extension gitsight-${{ steps.version.outputs.version }}.vsix
                ```
-               o en VS Code: **Extensiones → `…` → Instalar desde VSIX…**
+               or in VS Code: **Extensions → `…` → Install from VSIX…**

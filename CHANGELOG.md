@@ -2,35 +2,35 @@
 
 ## 0.2.3
 
-- El identificador de la extensión pasa a ser `jamartif.gitsight-free`, porque `gitsight` ya estaba ocupado en el Visual Studio Marketplace. Los ajustes (`gitsight.*`), comandos y vistas no cambian. Si instalaste una versión anterior desde un `.vsix`, desinstálala antes para no tener las dos.
+- The extension ID is now `jamartif.gitsight-free`, because `gitsight` was already taken in the Visual Studio Marketplace. Settings (`gitsight.*`), commands and views are unchanged. If you installed an earlier version from a `.vsix`, uninstall it first so you do not end up with both.
 
 ## 0.2.2
 
-### Seguridad
-- Release workflow: la versión se valida como cadena completa (`[[ =~ ]]`) antes de escribirla en `$GITHUB_OUTPUT`; con `grep` una versión con salto de línea podía añadir otros outputs.
-- Los nombres de rama y tag se validan con `git check-ref-format`, que rechaza nombres como `rama.lock` o `a/.b`.
+### Security
+- Release workflow: the version is validated as a whole string (`[[ =~ ]]`) before being written to `$GITHUB_OUTPUT`; with `grep`, a version containing a newline could add extra outputs.
+- Branch and tag names are validated with `git check-ref-format`, which rejects names such as `branch.lock` or `a/.b`.
 
-### Cambios
-- La caché de historiales de `branchOrigin` tiene un límite (500.000 SHAs, descartando lo menos usado) y se vacía al cerrar una carpeta del workspace.
-- `branchOrigin` usa el mismo límite (20.000 commits) para la ascendencia del commit y para el historial first-parent de cada rama, así que ya no pierde la rama de commits antiguos en historiales largos.
+### Changes
+- The `branchOrigin` history cache has a limit (500,000 SHAs, evicting the least recently used) and is cleared when a workspace folder is closed.
+- `branchOrigin` uses the same limit (20,000 commits) for the commit's ancestry and for each branch's first-parent history, so it no longer misses the branch of old commits in long histories.
 
 ## 0.2.1
 
-### Seguridad
-- Panel de detalles: un mensaje de commit ya no puede crear enlaces propios (p. ej. `[#1](command:...)`). Solo se enlazan referencias `#123` hacia la URL https de issues del remoto, y el panel tiene `enableCommandUris: false`.
-- Hovers: los enlaces de comando están limitados a los comandos de GitSight.
-- Las revisiones que empiezan por `-` se rechazan antes de llegar a git (evita inyección de opciones como `--output=<archivo>`). La búsqueda por SHA solo acepta hexadecimal.
-- Release workflow: la versión introducida a mano se pasa por variable de entorno en lugar de interpolarse en el script.
+### Security
+- Details panel: a commit message can no longer create its own links (e.g. `[#1](command:...)`). Only `#123` references are linked, to the remote's https issue URL, and the panel has `enableCommandUris: false`.
+- Hovers: command links are limited to GitSight's own commands.
+- Revisions starting with `-` are rejected before reaching git (prevents option injection such as `--output=<file>`). SHA search only accepts hexadecimal.
+- Release workflow: the version typed by hand is passed through an environment variable instead of being interpolated into the script.
 
-### Cambios
-- La búsqueda por autor trata el texto literalmente (`--fixed-strings`), igual que la búsqueda por mensaje.
-- `branchOrigin` cachea el historial de cada rama mientras no cambie su punta y limita a 6 los procesos git simultáneos.
+### Changes
+- Author search treats the text literally (`--fixed-strings`), like message search.
+- `branchOrigin` caches each branch's history while its tip does not change and runs at most 6 git processes at once.
 
 ## 0.2.0
 
-- Detalles del commit: muestra la rama donde se hizo el commit, la rama de la que partió (con el commit de origen) y las ramas que lo contienen. Recupera el nombre de ramas borradas a partir del mensaje del merge.
-- Corregido el recuento de archivos duplicado en las estadísticas del commit.
+- Commit details: shows the branch the commit was made on, the branch it branched from (with the fork commit) and the branches that contain it. Recovers the name of deleted branches from the merge commit message.
+- Fixed the duplicated file count in the commit stats.
 
 ## 0.1.0
 
-- Primera versión: blame en línea y barra de estado, hovers, CodeLens, anotaciones de archivo (blame, heatmap, cambios), vistas de Commits, Historial de archivo, Historial de líneas, Ramas, Remotos, Tags, Stashes, Worktrees, Contribuidores y Búsqueda/Comparación, grafo de commits interactivo, panel de detalles de commit, enlaces a GitHub/GitLab/Bitbucket/Azure DevOps/Gitea y acciones Git (checkout, merge, rebase, cherry-pick, revert, reset, tags, stash, worktrees).
+- First release: inline and status bar blame, hovers, CodeLens, file annotations (blame, heatmap, changes), Commits, File History, Line History, Branches, Remotes, Tags, Stashes, Worktrees, Contributors and Search & Compare views, interactive commit graph, commit details panel, links to GitHub/GitLab/Bitbucket/Azure DevOps/Gitea and Git actions (checkout, merge, rebase, cherry-pick, revert, reset, tags, stash, worktrees).
