@@ -145,6 +145,30 @@ test('first-parent cache is bounded by SHAs, evicts the least recently used and 
   assert.equal(cache.size, 0);
 });
 
+test('removing a workspace folder only forgets the repositories inside it', () => {
+  const one = new Set(['s']);
+  const cache = new FirstParentCache(100);
+  const root = (...p: string[]) => path.join(path.sep, 'ws', ...p);
+  cache.set(root('a'), 'main\0x', one);
+  cache.set(root('b'), 'main\0x', one);
+  cache.set(root('c'), 'main\0x', one);
+  cache.set(path.join(path.sep, 'elsewhere'), 'main\0x', one);
+
+  // Folder `a` is closed; `b` and a subfolder of `c` stay open.
+  cache.clearRemovedFolders([root('a'), root('c')], [root('b'), root('c', 'pkg')]);
+  assert.equal(cache.get(root('a'), 'main\0x'), undefined, 'removed folder is forgotten');
+  assert.ok(cache.get(root('b'), 'main\0x'), 'other folders are kept');
+  assert.ok(cache.get(root('c'), 'main\0x'), 'a repository still open through another folder is kept');
+  assert.ok(cache.get(path.join(path.sep, 'elsewhere'), 'main\0x'), 'repositories outside any folder are kept');
+
+  // A removed subfolder of a repository forgets that repository; a removed parent forgets the ones inside.
+  cache.clearRemovedFolders([root('b', 'src')], []);
+  assert.equal(cache.get(root('b'), 'main\0x'), undefined);
+  cache.clearRemovedFolders([path.join(path.sep, 'ws')], []);
+  assert.equal(cache.get(root('c'), 'main\0x'), undefined);
+  assert.equal(cache.size, 1);
+});
+
 test('ref names are validated by git check-ref-format', async () => {
   for (const ok of ['feature/x', 'v1.2.3', 'fix-123', 'a.b']) assert.equal(await isValidRefName('branch', ok), true, ok);
   for (const bad of ['rama.lock', 'a/.b', 'a..b', 'a b', 'x@{1}', '-x', '--output=/tmp/x', '', 'HEAD', 'a/', '@{-1}', 'a\nb']) {

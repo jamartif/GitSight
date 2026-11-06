@@ -97,7 +97,7 @@ Search for **GitSight** in the Extensions view, or install the extension `jamart
 
 ### From GitHub Releases
 1. Download the `.vsix` of the latest version from [Releases](https://github.com/jamartif/GitSight/releases).
-2. `code --install-extension gitsight-X.Y.Z.vsix` (or in VS Code: **Extensions → `…` → Install from VSIX…**).
+2. `code --install-extension gitsight-free-X.Y.Z.vsix` (or in VS Code: **Extensions → `…` → Install from VSIX…**).
 
 ### From source
 ```bash
