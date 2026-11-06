@@ -66,13 +66,13 @@ jobs:
       - name: Package .vsix
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: npx vsce package --out "gitsight-$VERSION.vsix"
+        run: npx vsce package --out "gitsight-free-$VERSION.vsix"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gitsight-${{ steps.version.outputs.version }}
-          path: gitsight-${{ steps.version.outputs.version }}.vsix
+          name: gitsight-free-${{ steps.version.outputs.version }}
+          path: gitsight-free-${{ steps.version.outputs.version }}.vsix
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -82,13 +82,13 @@ jobs:
           draft: ${{ github.event_name == 'workflow_dispatch' }}
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}
           generate_release_notes: true
-          files: gitsight-${{ steps.version.outputs.version }}.vsix
+          files: gitsight-free-${{ steps.version.outputs.version }}.vsix
           body: |
             ## Installation
 
-            1. Download `gitsight-${{ steps.version.outputs.version }}.vsix` from this release's assets.
+            1. Download `gitsight-free-${{ steps.version.outputs.version }}.vsix` from this release's assets.
             2. Install it:
                ```bash
-               code --install-extension gitsight-${{ steps.version.outputs.version }}.vsix
+               code --install-extension gitsight-free-${{ steps.version.outputs.version }}.vsix
                ```
                or in VS Code: **Extensions → `…` → Install from VSIX…**

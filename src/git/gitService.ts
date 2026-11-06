@@ -464,6 +464,18 @@ export class FirstParentCache {
     this.retainForRoot(root, new Set());
   }
 
+  /**
+   * Forgets the repositories that lived in workspace folders that were just removed, unless a
+   * folder that is still open covers them too (the same repository opened twice, or nested).
+   * Repositories outside every folder (a file opened on its own) are kept.
+   */
+  clearRemovedFolders(removed: string[], remaining: string[]): void {
+    const roots = new Set([...this.entries.keys()].map((k) => k.substring(0, k.indexOf('\0'))));
+    for (const root of roots) {
+      if (removed.some((f) => overlaps(root, f)) && !remaining.some((f) => overlaps(root, f))) this.clear(root);
+    }
+  }
+
   private remove(k: string): void {
     const set = this.entries.get(k);
     if (!set) return;
@@ -472,11 +484,25 @@ export class FirstParentCache {
   }
 }
 
+/** True if one path is the other or contains it. */
+function overlaps(a: string, b: string): boolean {
+  const inside = (child: string, parent: string) => {
+    const rel = path.relative(parent, child);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  };
+  return inside(a, b) || inside(b, a);
+}
+
 /** ~500k SHAs is a few tens of MB: enough for every branch of a large repo, or several small ones. */
 const firstParentCache = new FirstParentCache(500_000);
 
 export function clearFirstParentCache(root?: string): void {
   firstParentCache.clear(root);
+}
+
+/** See `FirstParentCache.clearRemovedFolders`. */
+export function clearFirstParentCacheForRemovedFolders(removed: string[], remaining: string[]): void {
+  firstParentCache.clearRemovedFolders(removed, remaining);
 }
 
 /**
