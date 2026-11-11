@@ -47,6 +47,16 @@
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "GitSight runs git inside the workspace, and a repository's own configuration can make git execute programs. It stays disabled until the workspace is trusted."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "GitSight needs a local git repository on disk."
+    }
+  },
   "contributes": {
     "configuration": {
       "title": "GitSight",

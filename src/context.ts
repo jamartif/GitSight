@@ -9,6 +9,7 @@ import {
 } from './git/gitService';
 import { CustomRemote, RemoteProvider, getRemoteProvider } from './git/remoteProviders';
 import { formatDate, fromNow } from './utils/date';
+import { parseRevisionUri } from './uris';
 
 export function config<T>(key: string): T {
   return vscode.workspace.getConfiguration('gitsight').get<T>(key) as T;
@@ -19,25 +20,39 @@ interface BlameCacheEntry {
   promise: Promise<BlameResult | undefined>;
 }
 
+export interface RepositoryChange {
+  /**
+   * True when only a file was saved: history, refs and blame are unchanged, so only what depends
+   * on the working tree (file status, changes annotations) needs refreshing.
+   */
+  workingTreeOnly: boolean;
+}
+
 /** Shared state for all features: repository lookup, blame cache and change notifications. */
 export class GitContext implements vscode.Disposable {
   private readonly blameCache = new Map<string, BlameCacheEntry>();
-  private readonly _onDidChangeRepository = new vscode.EventEmitter<void>();
+  private readonly providerCache = new Map<string, Promise<RemoteProvider | undefined>>();
+  private readonly _onDidChangeRepository = new vscode.EventEmitter<RepositoryChange>();
   readonly onDidChangeRepository = this._onDidChangeRepository.event;
   private readonly disposables: vscode.Disposable[] = [];
   private refreshTimer: NodeJS.Timeout | undefined;
+  private pendingFull = false;
 
   constructor() {
     // Watch .git internals (HEAD, refs, index) so views / blame refresh after commits, checkouts, etc.
-    const watcher = vscode.workspace.createFileSystemWatcher('**/.git/{HEAD,index,ORIG_HEAD,FETCH_HEAD,refs/**,logs/HEAD,packed-refs}');
-    const fire = () => this.scheduleRefresh();
+    const watcher = vscode.workspace.createFileSystemWatcher('**/.git/{HEAD,index,ORIG_HEAD,FETCH_HEAD,refs/**,logs/HEAD,packed-refs,config}');
+    const fire = () => this.scheduleRefresh(true);
     watcher.onDidChange(fire, null, this.disposables);
     watcher.onDidCreate(fire, null, this.disposables);
     watcher.onDidDelete(fire, null, this.disposables);
     this.disposables.push(watcher);
     this.disposables.push(
       vscode.workspace.onDidCloseTextDocument((d) => this.blameCache.delete(d.uri.toString())),
-      vscode.workspace.onDidSaveTextDocument(() => this.scheduleRefresh()),
+      // Saving changes no history: don't drop the blame cache or reload every view and the graph.
+      vscode.workspace.onDidSaveTextDocument(() => this.scheduleRefresh(false)),
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('gitsight.remotes')) this.providerCache.clear();
+      }),
       vscode.workspace.onDidChangeWorkspaceFolders((e) => {
         clearRepositoryCache();
         // A folder was closed: only its repositories' first-parent histories are no longer needed.
@@ -45,22 +60,29 @@ export class GitContext implements vscode.Disposable {
           const remaining = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
           clearFirstParentCacheForRemovedFolders(e.removed.map((f) => f.uri.fsPath), remaining);
         }
-        this.scheduleRefresh();
+        this.scheduleRefresh(true);
       }),
     );
   }
 
-  private scheduleRefresh(): void {
+  private scheduleRefresh(full: boolean): void {
+    this.pendingFull ||= full;
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
     this.refreshTimer = setTimeout(() => {
-      this.blameCache.clear();
-      this._onDidChangeRepository.fire();
+      const workingTreeOnly = !this.pendingFull;
+      this.pendingFull = false;
+      this.refreshTimer = undefined;
+      if (!workingTreeOnly) {
+        this.blameCache.clear();
+        this.providerCache.clear();
+      }
+      this._onDidChangeRepository.fire({ workingTreeOnly });
     }, 300);
   }
 
   refresh(): void {
     clearRepositoryCache();
-    this.scheduleRefresh();
+    this.scheduleRefresh(true);
   }
 
   async getRepository(uri?: vscode.Uri): Promise<Repository | undefined> {
@@ -68,10 +90,8 @@ export class GitContext implements vscode.Disposable {
       const repo = await findRepository(uri.fsPath);
       if (repo) return repo;
     }
-    if (uri && uri.scheme === 'gitsight') {
-      const { repo } = JSON.parse(uri.query) as { repo: string };
-      return new Repository(repo);
-    }
+    const rev = uri && parseRevisionUri(uri);
+    if (rev) return new Repository(rev.repo);
     const editorUri = vscode.window.activeTextEditor?.document.uri;
     if (editorUri && editorUri.scheme === 'file' && editorUri !== uri) {
       const repo = await findRepository(editorUri.fsPath);
@@ -103,7 +123,17 @@ export class GitContext implements vscode.Disposable {
     return promise;
   }
 
-  async getRemoteProvider(repo: Repository): Promise<RemoteProvider | undefined> {
+  /** Cached per repository until refs/config change: hovers and panels ask for it constantly. */
+  getRemoteProvider(repo: Repository): Promise<RemoteProvider | undefined> {
+    let cached = this.providerCache.get(repo.root);
+    if (!cached) {
+      cached = this.resolveRemoteProvider(repo);
+      this.providerCache.set(repo.root, cached);
+    }
+    return cached;
+  }
+
+  private async resolveRemoteProvider(repo: Repository): Promise<RemoteProvider | undefined> {
     const remotes = await repo.remotes().catch(() => []);
     const custom = config<CustomRemote[]>('remotes.custom') ?? [];
     const ordered = [...remotes.filter((r) => r.name === 'origin'), ...remotes.filter((r) => r.name !== 'origin')];
@@ -115,6 +145,7 @@ export class GitContext implements vscode.Disposable {
   }
 
   dispose(): void {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
     clearFirstParentCache();
     this.disposables.forEach((d) => d.dispose());
     this._onDidChangeRepository.dispose();

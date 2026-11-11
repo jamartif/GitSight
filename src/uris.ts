@@ -25,8 +25,8 @@ export function revisionUri(repo: Repository, ref: string | undefined, rel: stri
 
 export class RevisionContentProvider implements vscode.TextDocumentContentProvider {
   async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
-    const q = JSON.parse(uri.query) as RevisionQuery;
-    if (q.ref === 'EMPTY') return '';
+    const q = parseRevisionUri(uri);
+    if (!q || q.ref === 'EMPTY') return '';
     const repo = new Repository(q.repo);
     try {
       return await repo.show(q.ref, q.path);
@@ -39,7 +39,11 @@ export class RevisionContentProvider implements vscode.TextDocumentContentProvid
 export function parseRevisionUri(uri: vscode.Uri): RevisionQuery | undefined {
   if (uri.scheme !== SCHEME) return undefined;
   try {
-    return JSON.parse(uri.query) as RevisionQuery;
+    const q = JSON.parse(uri.query) as Partial<RevisionQuery> | null;
+    // Anything can ask VS Code to open a gitsight: URI, so the query is validated, not trusted.
+    if (!q || typeof q.repo !== 'string' || typeof q.ref !== 'string' || typeof q.path !== 'string') return undefined;
+    if (!q.repo || !q.path || !path.isAbsolute(q.repo)) return undefined;
+    return { repo: q.repo, ref: q.ref, path: q.path };
   } catch {
     return undefined;
   }

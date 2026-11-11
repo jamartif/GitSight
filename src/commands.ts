@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { GitContext } from './context';
-import { GitError, Repository, findRepository, isSafeRef, isValidRefName } from './git/gitService';
+import { GitError, Repository, assertSafeRef, findRepository, isSafeRef, isValidRefName } from './git/gitService';
 import { Commit, isUncommitted } from './git/models';
 import { FileAnnotations } from './annotations/fileAnnotations';
 import { CommitArgs } from './annotations/hover';
@@ -87,7 +87,10 @@ async function commitTarget(ctx: GitContext, arg?: unknown): Promise<{ repo: Rep
   if (arg instanceof BranchNode) return { repo: arg.repo, sha: arg.branch.sha };
   if (arg instanceof TagNode) return { repo: arg.repo, sha: arg.tag.sha };
   const a = arg as Partial<CommitArgs> | undefined;
-  if (a && typeof a === 'object' && a.repo && a.sha) return { repo: new Repository(a.repo), sha: a.sha };
+  // Arguments can come from links, webviews or other extensions: never let one reach git as an option.
+  if (a && typeof a === 'object' && typeof a.repo === 'string' && typeof a.sha === 'string' && a.repo && a.sha) {
+    return { repo: new Repository(a.repo), sha: assertSafeRef(a.sha) };
+  }
 
   const editor = vscode.window.activeTextEditor;
   if (!editor) return undefined;
@@ -106,11 +109,14 @@ async function commitTarget(ctx: GitContext, arg?: unknown): Promise<{ repo: Rep
 
 /** Resolves a ref name (branch/tag) or sha from args. */
 function refTarget(arg: unknown): { repo: Repository; ref: string; kind: 'branch' | 'remoteBranch' | 'tag' | 'commit' } | undefined {
-  if (arg instanceof BranchNode) return { repo: arg.repo, ref: arg.branch.name, kind: arg.branch.remote ? 'remoteBranch' : 'branch' };
-  if (arg instanceof TagNode) return { repo: arg.repo, ref: arg.tag.name, kind: 'tag' };
-  if (arg instanceof CommitNode) return { repo: arg.repo, ref: arg.sha, kind: 'commit' };
+  // Ref names come from the repository (a fetched tag can be called `-d`), so they are checked too.
+  if (arg instanceof BranchNode) return { repo: arg.repo, ref: assertSafeRef(arg.branch.name), kind: arg.branch.remote ? 'remoteBranch' : 'branch' };
+  if (arg instanceof TagNode) return { repo: arg.repo, ref: assertSafeRef(arg.tag.name), kind: 'tag' };
+  if (arg instanceof CommitNode) return { repo: arg.repo, ref: assertSafeRef(arg.sha), kind: 'commit' };
   const a = arg as Partial<CommitArgs> | undefined;
-  if (a && typeof a === 'object' && a.repo && a.sha) return { repo: new Repository(a.repo), ref: a.sha, kind: 'commit' };
+  if (a && typeof a === 'object' && typeof a.repo === 'string' && typeof a.sha === 'string' && a.repo && a.sha) {
+    return { repo: new Repository(a.repo), ref: assertSafeRef(a.sha), kind: 'commit' };
+  }
   return undefined;
 }
 
@@ -196,7 +202,9 @@ export function registerCommands(context: vscode.ExtensionContext, s: Services):
       }),
     );
 
-  reg('gitsight.internal.invoke', (fn: () => void) => fn());
+  reg('gitsight.internal.invoke', (fn: unknown) => {
+    if (typeof fn === 'function') (fn as () => void)();
+  });
 
   // ---- Annotations ----
   reg('gitsight.toggleFileBlame', () => s.annotations.toggle('blame'));
@@ -443,7 +451,7 @@ export function registerCommands(context: vscode.ExtensionContext, s: Services):
       t = { repo, ref, kind: 'branch' };
     }
     if (t.kind === 'remoteBranch') {
-      const local = t.ref.substring(t.ref.indexOf('/') + 1);
+      const local = assertSafeRef(t.ref.substring(t.ref.indexOf('/') + 1));
       const exists = (await t.repo.branches()).some((b) => b.name === local);
       await runGit(t.repo, exists ? ['switch', local] : ['switch', '--track', t.ref], `Switched to ${local}`);
     } else if (t.kind === 'branch') {
@@ -471,9 +479,9 @@ export function registerCommands(context: vscode.ExtensionContext, s: Services):
   reg('gitsight.deleteBranch', async (node: BranchNode) => {
     if (!(node instanceof BranchNode)) return;
     if (!(await confirm(`Delete branch ${node.branch.name}?`, 'Delete'))) return;
-    const ok = await runGit(node.repo, ['branch', '-d', node.branch.name], `Deleted ${node.branch.name}`);
+    const ok = await runGit(node.repo, ['branch', '-d', '--', node.branch.name], `Deleted ${node.branch.name}`);
     if (!ok && (await confirm(`Branch ${node.branch.name} is not fully merged. Force delete?`, 'Force Delete'))) {
-      await runGit(node.repo, ['branch', '-D', node.branch.name], `Deleted ${node.branch.name}`);
+      await runGit(node.repo, ['branch', '-D', '--', node.branch.name], `Deleted ${node.branch.name}`);
     }
   });
   reg('gitsight.mergeBranch', async (arg: unknown) => {
@@ -503,7 +511,7 @@ export function registerCommands(context: vscode.ExtensionContext, s: Services):
   reg('gitsight.deleteTag', async (node: TagNode) => {
     if (!(node instanceof TagNode)) return;
     if (!(await confirm(`Delete tag ${node.tag.name}?`, 'Delete'))) return;
-    await runGit(node.repo, ['tag', '-d', node.tag.name], `Deleted tag ${node.tag.name}`);
+    await runGit(node.repo, ['tag', '-d', '--', node.tag.name], `Deleted tag ${node.tag.name}`);
   });
   reg('gitsight.cherryPick', async (arg?: unknown) => {
     const t = await commitTarget(ctx, arg);

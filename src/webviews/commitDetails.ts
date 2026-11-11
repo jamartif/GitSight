@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import { GitContext, config } from '../context';
-import { Repository } from '../git/gitService';
+import { Repository, assertSafeRef } from '../git/gitService';
 import { commitMessageHtml } from './messageHtml';
 import { formatDate, fromNow } from '../utils/date';
 import { FileChangeNode } from '../views/nodes';
-import { escapeHtml, nonce, page } from './html';
+import { escapeHtml, isFullSha, nonce, page } from './html';
 
 /** A single reusable panel that shows details of a commit. */
 export class CommitDetailsPanel {
@@ -21,16 +21,20 @@ export class CommitDetailsPanel {
         retainContextWhenHidden: false,
       });
       this.panel.onDidDispose(() => (this.panel = undefined));
-      this.panel.webview.onDidReceiveMessage((msg) => void this.onMessage(msg));
+      this.panel.webview.onDidReceiveMessage((msg) => void this.onMessage(msg).catch(() => undefined));
     } else {
       this.panel.reveal(undefined, true);
     }
-    this.state = { repo, sha };
-    const commit = await repo.getCommit(sha);
-    if (!commit || !this.panel) return;
-    const files = await repo.changedFiles(sha);
-    const provider = await ctx.getRemoteProvider(repo);
-    const stats = await repo.exec(['show', '--shortstat', '--format=', sha]).then((s) => s.trim().replace(/^\d+ files? changed,?\s*/, ''), () => '');
+    assertSafeRef(sha);
+    const state = (this.state = { repo, sha });
+    const [commit, files, provider, stats] = await Promise.all([
+      repo.getCommit(sha),
+      repo.changedFiles(sha),
+      ctx.getRemoteProvider(repo),
+      repo.exec(['show', '--shortstat', '--format=', sha, '--']).then((s) => s.trim().replace(/^\d+ files? changed,?\s*/, ''), () => ''),
+    ]);
+    // Another commit was requested (or the panel closed) while git was running: drop this result.
+    if (!commit || !this.panel || this.state !== state) return;
     this.panel.title = `Commit ${sha.substring(0, 7)}`;
 
     const n = nonce();
@@ -44,7 +48,7 @@ export class CommitDetailsPanel {
     const fileRows = files
       .map(
         (f, i) =>
-          `<li data-i="${i}" title="${escapeHtml(f.path)}"><span class="st st-${f.status}">${f.status}</span> <a data-i="${i}">${escapeHtml(f.path)}</a>${
+          `<li data-i="${i}" title="${escapeHtml(f.path)}"><span class="st st-${escapeHtml(f.status)}">${escapeHtml(f.status)}</span> <a data-i="${i}">${escapeHtml(f.path)}</a>${
             f.originalPath ? ` <span class="muted">← ${escapeHtml(f.originalPath)}</span>` : ''
           }</li>`,
       )
@@ -104,7 +108,7 @@ document.addEventListener('click', (e) => {
   else if (t.dataset.sha) vscode.postMessage({ type: 'commit', sha: t.dataset.sha });
   else vscode.postMessage({ type: 'file', index: Number(t.dataset.i) });
 });`;
-    this.panel.webview.html = page(this.panel.title, n, this.panel.webview.cspSource, style, body, script);
+    this.panel.webview.html = page(this.panel.title, n, style, body, script);
 
     this.files = files.map((f) => new FileChangeNode(repo, f, sha, commit.parents.length ? undefined : 'EMPTY'));
     this.ctx = ctx;
@@ -161,10 +165,10 @@ document.addEventListener('click', (e) => {
     const args = { repo: state.repo.root, sha: state.sha };
     switch (msg.type) {
       case 'file':
-        await this.files[msg.index!]?.open();
+        if (Number.isInteger(msg.index)) await this.files[msg.index!]?.open();
         break;
       case 'commit':
-        if (this.ctx && msg.sha) await this.show(this.ctx, state.repo, msg.sha);
+        if (this.ctx && isFullSha(msg.sha)) await this.show(this.ctx, state.repo, msg.sha);
         break;
       case 'action': {
         const map: Record<string, string> = {
@@ -177,7 +181,7 @@ document.addEventListener('click', (e) => {
           branch: 'gitsight.createBranch',
           tag: 'gitsight.createTag',
         };
-        const cmd = map[msg.action ?? ''];
+        const cmd = typeof msg.action === 'string' && Object.hasOwn(map, msg.action) ? map[msg.action] : undefined;
         if (cmd) await vscode.commands.executeCommand(cmd, args);
         break;
       }

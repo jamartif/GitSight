@@ -4,6 +4,7 @@ import { isUncommitted } from '../git/models';
 import { findRepository } from '../git/gitService';
 import { linkifyIssues } from '../git/remoteProviders';
 import { formatDate, fromNow } from '../utils/date';
+import { escapeMarkdown } from '../utils/markdown';
 
 export interface CommitArgs {
   repo: string;
@@ -14,10 +15,6 @@ export interface CommitArgs {
 
 export function commandLink(command: string, args: unknown): string {
   return `command:${command}?${encodeURIComponent(JSON.stringify([args]))}`;
-}
-
-function escapeMarkdown(s: string): string {
-  return s.replace(/[\\`*_{}[\]()#+\-.!|<>]/g, '\\$&');
 }
 
 const HOVER_COMMANDS = ['gitsight.showCommitDetails', 'gitsight.diffLineWithPrevious', 'gitsight.showLineHistory', 'gitsight.copySha'];

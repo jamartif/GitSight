@@ -53,8 +53,18 @@ export function git(args: string[], opts: ExecOptions): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = execFile(
       'git',
-      ['-c', 'core.quotepath=false', '-c', 'color.ui=false', ...args],
-      { cwd: opts.cwd, maxBuffer: opts.maxBuffer ?? 100 * 1024 * 1024, encoding: 'utf8', env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' } },
+      // diff.autoRefreshIndex=false: `git diff` would otherwise rewrite the index (see GIT_OPTIONAL_LOCKS below).
+      ['-c', 'core.quotepath=false', '-c', 'color.ui=false', '-c', 'diff.autoRefreshIndex=false', ...args],
+      {
+        cwd: opts.cwd,
+        maxBuffer: opts.maxBuffer ?? 100 * 1024 * 1024,
+        encoding: 'utf8',
+        windowsHide: true,
+        // GIT_OPTIONAL_LOCKS=0: background commands (status, diff…) must not take the index lock or
+        // rewrite the index. Otherwise they race with the user's own git commands and, since the
+        // index is watched, every refresh would trigger another one.
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C' },
+      },
       (err, stdout, stderr) => {
         const code = (err as (Error & { code?: number | string }) | null)?.code;
         if (err && !(typeof code === 'number' && opts.okCodes?.includes(code))) {
@@ -166,7 +176,10 @@ export class Repository {
 
   async show(ref: string, rel: string): Promise<string> {
     if (!ref || /^0+$/.test(ref)) {
-      return fs.promises.readFile(path.join(this.root, rel), 'utf8');
+      // Working tree: `rel` can come from a gitsight: URI, so it must not escape the repository.
+      const abs = path.resolve(this.root, rel);
+      if (!isInside(abs, this.root)) throw new GitError(`Path is outside the repository: ${JSON.stringify(rel)}`, '', []);
+      return fs.promises.readFile(abs, 'utf8');
     }
     if (ref === ':' || ref === 'INDEX') return this.exec(['show', `:${rel}`]);
     return this.exec(['show', `${assertSafeRef(ref)}:${rel}`]);
@@ -364,12 +377,12 @@ export class Repository {
       try {
         await fs.promises.writeFile(a, base);
         await fs.promises.writeFile(b, contents);
-        out = await git(['diff', '--no-index', '-U0', '--no-color', a, b], { cwd: this.root, okCodes: [1] });
+        out = await git(['diff', '--no-index', '--no-ext-diff', '--no-textconv', '-U0', '--no-color', a, b], { cwd: this.root, okCodes: [1] });
       } finally {
         fs.promises.rm(dir, { recursive: true, force: true }).catch(() => undefined);
       }
     } else {
-      out = await this.exec(['diff', '-U0', '--no-color', assertSafeRef(ref), '--', rel]);
+      out = await this.exec(['diff', '--no-ext-diff', '--no-textconv', '-U0', '--no-color', assertSafeRef(ref), '--', rel]);
     }
     const added: number[] = [];
     const modified: number[] = [];
@@ -484,13 +497,15 @@ export class FirstParentCache {
   }
 }
 
+/** True if `child` is `parent` or lives under it. */
+export function isInside(child: string, parent: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel === '' || (rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel));
+}
+
 /** True if one path is the other or contains it. */
 function overlaps(a: string, b: string): boolean {
-  const inside = (child: string, parent: string) => {
-    const rel = path.relative(parent, child);
-    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-  };
-  return inside(a, b) || inside(b, a);
+  return isInside(a, b) || isInside(b, a);
 }
 
 /** ~500k SHAs is a few tens of MB: enough for every branch of a large repo, or several small ones. */
@@ -562,20 +577,29 @@ export function parseMergedBranch(subject: string): string | undefined {
 }
 
 const repoCache = new Map<string, Promise<Repository | undefined>>();
+/** fsPath → directory git runs in. Saves a synchronous stat on every lookup (blame, hover, selection…). */
+const dirCache = new Map<string, string>();
+const MAX_CACHED_PATHS = 2000;
 
 /** Finds the repository containing `fsPath` (file or directory). */
 export function findRepository(fsPath: string): Promise<Repository | undefined> {
-  let dir = fsPath;
-  try {
-    if (!fs.statSync(fsPath).isDirectory()) dir = path.dirname(fsPath);
-  } catch {
-    dir = path.dirname(fsPath);
+  let dir = dirCache.get(fsPath);
+  if (dir === undefined) {
+    dir = fsPath;
+    try {
+      if (!fs.statSync(fsPath).isDirectory()) dir = path.dirname(fsPath);
+    } catch {
+      dir = path.dirname(fsPath);
+    }
+    if (dirCache.size >= MAX_CACHED_PATHS) dirCache.clear();
+    dirCache.set(fsPath, dir);
   }
   let cached = repoCache.get(dir);
   if (!cached) {
     cached = git(['rev-parse', '--show-toplevel'], { cwd: dir })
       .then((out) => new Repository(path.normalize(out.trim())))
       .catch(() => undefined);
+    if (repoCache.size >= MAX_CACHED_PATHS) repoCache.clear();
     repoCache.set(dir, cached);
   }
   return cached;
@@ -583,4 +607,5 @@ export function findRepository(fsPath: string): Promise<Repository | undefined> 
 
 export function clearRepositoryCache(): void {
   repoCache.clear();
+  dirCache.clear();
 }
