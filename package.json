@@ -2,7 +2,7 @@
   "name": "gitsight-free",
   "displayName": "GitSight — Free Git Supercharged",
   "description": "100% free and open-source Git superpowers for VS Code: inline blame, hovers, CodeLens, heatmaps, file & line history, commit graph, branches, tags, stashes, worktrees, contributors, commit search, remote links and more. No accounts, no paywalls, no telemetry.",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "publisher": "jamartif",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -47,6 +47,16 @@
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "GitSight runs git inside the workspace, and a repository's own configuration can make git execute programs. It stays disabled until the workspace is trusted."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "GitSight needs a local git repository on disk."
+    }
+  },
   "contributes": {
     "configuration": {
       "title": "GitSight",

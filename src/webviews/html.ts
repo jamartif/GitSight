@@ -8,15 +8,24 @@ export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
-export function page(title: string, n: string, cspSource: string, style: string, body: string, script: string): string {
+/** Full git object id (SHA-1 or SHA-256), the only kind of revision a webview may send back. */
+export function isFullSha(v: unknown): v is string {
+  return typeof v === 'string' && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(v);
+}
+
+/**
+ * Wraps a panel in a page whose CSP allows nothing but its own nonce'd style and script: no
+ * images, fonts, frames or network, so even injected markup could not load or leak anything.
+ */
+export function page(title: string, n: string, style: string, body: string, script: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${n}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${n}'; script-src 'nonce-${n}'; base-uri 'none'; form-action 'none';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${escapeHtml(title)}</title>
-<style>
+<style nonce="${n}">
   body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; padding: 0; }
   a { color: var(--vscode-textLink-foreground); text-decoration: none; cursor: pointer; }
   a:hover { text-decoration: underline; }

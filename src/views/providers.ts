@@ -25,8 +25,15 @@ abstract class BaseProvider implements vscode.TreeDataProvider<Node>, vscode.Dis
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   protected readonly disposables: vscode.Disposable[] = [];
 
+  /** Views that show working-tree state also reload when a file is saved; the rest only on git changes. */
+  protected readonly refreshOnSave: boolean = false;
+
   constructor(protected readonly ctx: GitContext) {
-    this.disposables.push(ctx.onDidChangeRepository(() => this.refresh()));
+    this.disposables.push(
+      ctx.onDidChangeRepository((e) => {
+        if (!e.workingTreeOnly || this.refreshOnSave) this.refresh();
+      }),
+    );
   }
 
   refresh(): void {
@@ -107,6 +114,7 @@ export class CommitsProvider extends BaseProvider {
 }
 
 export class FileHistoryProvider extends BaseProvider {
+  protected override readonly refreshOnSave = true;
   private uri: vscode.Uri | undefined;
   private pinned = false;
   private limit = 0;

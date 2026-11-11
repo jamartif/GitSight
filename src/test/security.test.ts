@@ -5,7 +5,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { FirstParentCache, Repository, isValidRefName, mapLimit } from '../git/gitService';
-import { getRemoteProvider } from '../git/remoteProviders';
+import { getRemoteProvider, parseRemoteUrl } from '../git/remoteProviders';
+import { escapeMarkdown } from '../utils/markdown';
+import { isFullSha } from '../webviews/html';
 import { commitMessageHtml } from '../webviews/messageHtml';
 
 const gh = getRemoteProvider('git@github.com:acme/widgets.git')!;
@@ -176,4 +178,54 @@ test('ref names are validated by git check-ref-format', async () => {
   }
   assert.equal(await isValidRefName('tag', 'v1.0.0'), true);
   assert.equal(await isValidRefName('tag', 'v1.lock'), false);
+});
+
+test('reading the working-tree version of a file cannot leave the repository', async () => {
+  const dir = makeRepo();
+  const outside = path.join(path.dirname(dir), `${path.basename(dir)}-secret.txt`);
+  fs.writeFileSync(outside, 'secret\n');
+  const repo = new Repository(dir);
+  assert.equal(await repo.show('', 'a.txt'), 'a\n');
+  for (const rel of [`../${path.basename(outside)}`, outside, 'sub/../../' + path.basename(outside)]) {
+    await assert.rejects(repo.show('', rel), /outside the repository/, rel);
+    await assert.rejects(repo.show('0000000000000000000000000000000000000000', rel), /outside the repository/, rel);
+  }
+  fs.rmSync(outside);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('remote URLs only yield https links to a plain host, with the path encoded', () => {
+  for (const url of ['https://user@evil.example@github.com.attacker/x/y.git', 'https://git hub.com/a/b', 'git@github.com)[x](command:y:a/b.git']) {
+    assert.equal(parseRemoteUrl(url), undefined, url);
+  }
+  const p = getRemoteProvider('https://github.com/acme/wid)gets (x)?q=1#frag.git')!;
+  assert.equal(p.baseUrl, 'https://github.com/acme/wid%29gets%20%28x%29%3Fq%3D1%23frag');
+  assert.doesNotMatch(p.commitUrl('a'.repeat(40)), /[()\s"]/);
+  assert.equal(getRemoteProvider('git@github.com:acme/widgets.git')!.baseUrl, 'https://github.com/acme/widgets');
+  assert.equal(getRemoteProvider('git@ssh.dev.azure.com:v3/org/proj/repo')!.baseUrl, 'https://dev.azure.com/org/proj/_git/repo');
+});
+
+test('background git commands never rewrite the index', async () => {
+  const dir = makeRepo();
+  const index = path.join(dir, '.git', 'index');
+  // Same content, new mtime: a plain `git status` would refresh the index entry and rewrite the file.
+  const later = new Date(Date.now() + 60_000);
+  fs.utimesSync(path.join(dir, 'a.txt'), later, later);
+  const before = fs.readFileSync(index);
+  const repo = new Repository(dir);
+  await repo.exec(['status', '--porcelain']);
+  await repo.exec(['diff', 'HEAD']);
+  assert.ok(before.equals(fs.readFileSync(index)), 'index is untouched');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('text from commits is inert in Markdown tooltips, and webviews only send full SHAs', () => {
+  const evil = '![x](https://tracker.example/p.png) [a](https://evil.example) <img src=x> `c` $(flame) &lt;';
+  const escaped = escapeMarkdown(evil);
+  // every Markdown-significant character is preceded by a backslash
+  assert.doesNotMatch(escaped, /(?<!\\)[![\]()<>`$&]/);
+  assert.ok(isFullSha('a'.repeat(40)) && isFullSha('0123456789abcdef'.repeat(4)));
+  for (const v of ['--abort', 'HEAD', 'a'.repeat(39), 'A'.repeat(40), 'a'.repeat(40) + '\n', undefined, 5, ['a'.repeat(40)]]) {
+    assert.equal(isFullSha(v), false, String(v));
+  }
 });

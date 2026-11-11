@@ -24,9 +24,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(ctx);
 
   void ctx.getRepository().then((repo) => vscode.commands.executeCommand('setContext', 'gitsight:enabled', !!repo));
-  ctx.onDidChangeRepository(() =>
-    void ctx.getRepository().then((repo) => vscode.commands.executeCommand('setContext', 'gitsight:enabled', !!repo)),
-  );
+  ctx.onDidChangeRepository((e) => {
+    if (e.workingTreeOnly) return;
+    void ctx.getRepository().then((repo) => vscode.commands.executeCommand('setContext', 'gitsight:enabled', !!repo));
+  });
 
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(SCHEME, new RevisionContentProvider()),

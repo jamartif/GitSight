@@ -6,6 +6,7 @@ import { formatDate, fromNow } from '../utils/date';
 import { config } from '../context';
 import { revisionUri } from '../uris';
 import { parseNameStatus } from '../git/parsers';
+import { escapeMarkdown } from '../utils/markdown';
 
 export abstract class Node {
   abstract getTreeItem(): vscode.TreeItem | Promise<vscode.TreeItem>;
@@ -101,10 +102,12 @@ function label(ref: string): string {
 
 export function commitTooltip(commit: Commit): vscode.MarkdownString {
   const md = new vscode.MarkdownString('', true);
-  md.appendMarkdown(`$(account) **${commit.author}** <${commit.authorEmail}>  \n`);
+  // Author, email and refs are written by whoever made the commit: escaped, so a tooltip can't
+  // render their links or load their remote images.
+  md.appendMarkdown(`$(account) **${escapeMarkdown(commit.author)}** \\<${escapeMarkdown(commit.authorEmail)}\\>  \n`);
   md.appendMarkdown(`$(calendar) ${formatDate(commit.authorTime, config<string>('dateFormat') || undefined)} (${fromNow(commit.authorTime)})  \n`);
   md.appendMarkdown(`$(git-commit) \`${commit.sha.substring(0, 7)}\``);
-  if (commit.refs.length) md.appendMarkdown(` ${commit.refs.map((r) => `\`${r}\``).join(' ')}`);
+  if (commit.refs.length) md.appendMarkdown(` ${commit.refs.map((r) => `\`${r.replace(/`/g, '')}\``).join(' ')}`);
   md.appendMarkdown('\n\n---\n\n');
   md.appendText(commit.subject + (commit.body ? `\n\n${commit.body}` : ''));
   return md;

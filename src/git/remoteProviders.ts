@@ -27,6 +27,8 @@ export function parseRemoteUrl(url: string): { domain: string; path: string } | 
   if (!m) m = /^(?:[^@]+@)?([^:/]+):(.+?)(?:\.git)?\/?$/.exec(url);
   if (!m) return undefined;
   let domain = m[1].toLowerCase();
+  // The domain ends up in https:// links that are opened in the browser: only plain host names.
+  if (!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(domain)) return undefined;
   let path = m[2].replace(/^\/+/, '');
   // Azure DevOps ssh: ssh.dev.azure.com:v3/org/project/repo
   if (domain === 'ssh.dev.azure.com' && path.startsWith('v3/')) {
@@ -53,7 +55,12 @@ function detectType(domain: string, custom: CustomRemote[]): ProviderType | unde
   return undefined;
 }
 
-const enc = (p: string) => p.split('/').map(encodeURIComponent).join('/');
+/** Encodes each path segment. Parentheses too, so a URL can never close a Markdown link early. */
+const enc = (p: string) =>
+  p
+    .split('/')
+    .map((s) => encodeURIComponent(s).replace(/[()']/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase()))
+    .join('/');
 
 export function getRemoteProvider(url: string, custom: CustomRemote[] = []): RemoteProvider | undefined {
   const parsed = parseRemoteUrl(url);
@@ -61,7 +68,7 @@ export function getRemoteProvider(url: string, custom: CustomRemote[] = []): Rem
   const type = detectType(parsed.domain, custom);
   if (!type) return undefined;
   const { domain, path } = parsed;
-  const baseUrl = `https://${domain}/${path}`;
+  const baseUrl = `https://${domain}/${enc(path)}`;
 
   switch (type) {
     case 'github':

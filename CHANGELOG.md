@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0
+
+### Security
+- Commit graph: row actions run only a fixed list of commands, and both panels accept nothing but full commit SHAs from their webview. Before, the graph ran `gitsight.<anything the page sent>`.
+- Webviews: the Content Security Policy no longer allows remote images or inline styles; only the panel's own nonce'd style and script load.
+- `gitsight:` URIs are validated before use, and reading the working-tree version of a file can no longer leave the repository (`../../…`).
+- Commands invoked with `{ repo, sha }` arguments, and branch / tag names coming from the repository, are rejected if git could read them as an option.
+- Remote URLs: only plain host names are accepted and the repository path is percent-encoded, so a crafted remote cannot produce a link to another site or break out of a hover link.
+- Commit tooltips in the views escape the author, email and refs: a commit can no longer add links or remote images to them.
+- The extension declares that it does not run in untrusted workspaces (Restricted Mode) or virtual workspaces.
+
+### Performance
+- Background git commands run with `GIT_OPTIONAL_LOCKS=0`: they no longer rewrite `.git/index`, which re-triggered a refresh of every view after each refresh and could collide with your own git commands.
+- Saving a file no longer clears the blame cache or reloads every view, the CodeLens and the commit graph; only what shows working-tree state (file history, changes annotation) is refreshed.
+- Commit graph: not reloaded while its tab is hidden (it reloads when shown again), stale `git log` results are dropped, and filtering toggles classes instead of rebuilding the whole table on each keystroke.
+- Commit details: the four git queries run in parallel, and a slower earlier request can no longer overwrite a newer one.
+- The remote provider is cached per repository (it was resolved with `git remote -v` on every hover), and repository lookup no longer does a synchronous `stat` on every call.
+
 ## 0.2.4
 
 - README, CHANGELOG and release notes in English.

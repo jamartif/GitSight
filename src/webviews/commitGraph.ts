@@ -3,7 +3,15 @@ import { GitContext, config } from '../context';
 import { Repository } from '../git/gitService';
 import { layoutGraph } from '../git/graphLayout';
 import { CommitDetailsPanel } from './commitDetails';
-import { nonce, page } from './html';
+import { isFullSha, nonce, page } from './html';
+
+/** The only commands the graph's row actions may run, whatever the webview sends. */
+const GRAPH_ACTIONS: Record<string, string> = {
+  checkout: 'gitsight.checkout',
+  createBranch: 'gitsight.createBranch',
+  cherryPick: 'gitsight.cherryPick',
+  copySha: 'gitsight.copySha',
+};
 
 interface GraphState {
   repo: Repository;
@@ -17,6 +25,10 @@ export class CommitGraphPanel {
   private static state: GraphState | undefined;
   private static ctx: GitContext;
   private static sub: vscode.Disposable | undefined;
+  /** Bumped on every reload so a slow `git log` can't overwrite the result of a newer one. */
+  private static seq = 0;
+  /** The repository changed while the panel was hidden: reload when it is shown again. */
+  private static stale = false;
 
   static async show(ctx: GitContext, repo: Repository): Promise<void> {
     this.ctx = ctx;
@@ -29,8 +41,16 @@ export class CommitGraphPanel {
         this.panel = undefined;
         this.sub?.dispose();
       });
-      this.panel.webview.onDidReceiveMessage((m) => void this.onMessage(m));
-      this.sub = ctx.onDidChangeRepository(() => void this.update());
+      this.panel.onDidChangeViewState((e) => {
+        if (e.webviewPanel.visible && this.stale) void this.update().catch(() => undefined);
+      });
+      this.panel.webview.onDidReceiveMessage((m) => void this.onMessage(m).catch(() => undefined));
+      this.sub = ctx.onDidChangeRepository((e) => {
+        if (e.workingTreeOnly) return;
+        // A hidden panel keeps its content; don't run git and re-render it until it is looked at.
+        if (this.panel?.visible) void this.update().catch(() => undefined);
+        else this.stale = true;
+      });
       this.panel.webview.html = this.html();
     } else {
       this.panel.reveal();
@@ -43,11 +63,13 @@ export class CommitGraphPanel {
   private static async update(): Promise<void> {
     const st = this.state;
     if (!st || !this.panel) return;
-    const commits = await st.repo.log({ maxCount: st.limit + 1, topo: true, all: st.allBranches });
+    const seq = ++this.seq;
+    this.stale = false;
+    const [commits, head] = await Promise.all([st.repo.log({ maxCount: st.limit + 1, topo: true, all: st.allBranches }), st.repo.headSha()]);
+    if (seq !== this.seq || !this.panel) return;
     const hasMore = commits.length > st.limit;
     const list = commits.slice(0, st.limit);
     const rows = layoutGraph(list);
-    const head = await st.repo.headSha();
     await this.panel.webview.postMessage({
       type: 'data',
       hasMore,
@@ -83,13 +105,13 @@ export class CommitGraphPanel {
         await this.update();
         break;
       case 'select':
-        if (m.sha) await CommitDetailsPanel.show(this.ctx, st.repo, m.sha);
+        if (isFullSha(m.sha)) await CommitDetailsPanel.show(this.ctx, st.repo, m.sha);
         break;
-      case 'action':
-        if (m.sha && m.action) {
-          await vscode.commands.executeCommand(`gitsight.${m.action}`, { repo: st.repo.root, sha: m.sha });
-        }
+      case 'action': {
+        const command = typeof m.action === 'string' && Object.hasOwn(GRAPH_ACTIONS, m.action) ? GRAPH_ACTIONS[m.action] : undefined;
+        if (command && isFullSha(m.sha)) await vscode.commands.executeCommand(command, { repo: st.repo.root, sha: m.sha });
         break;
+      }
     }
   }
 
@@ -130,12 +152,14 @@ export class CommitGraphPanel {
   <thead><tr><th id="graphhead"></th><th>Message</th><th>Author</th><th>Date</th><th>SHA</th></tr></thead>
   <tbody id="rows"></tbody>
 </table>
-<button id="more" style="display:none">Load more commits…</button>`;
+<button id="more" hidden>Load more commits…</button>`;
     const script = `
 const COLORS = ['#3fb950','#58a6ff','#d2a8ff','#f0883e','#ff7b72','#79c0ff','#e3b341','#56d4dd','#db61a2','#a5d6ff'];
 const LANE = 14, H = 24, R = 4;
 let data = { rows: [] };
 let selected = null;
+let hay = [];
+let filterTimer;
 const rowsEl = document.getElementById('rows');
 const search = document.getElementById('search');
 const x = (l) => LANE / 2 + l * LANE + 4;
@@ -178,21 +202,30 @@ function badges(refs) {
 function render() {
   const maxW = Math.min(20, Math.max(1, ...data.rows.map(r => r.width)));
   document.getElementById('graphcol').style.width = (maxW * LANE + 12) + 'px';
-  const q = search.value.trim().toLowerCase();
-  let matches = 0;
+  hay = data.rows.map(r => (r.subject + ' ' + r.author + ' ' + r.sha + ' ' + r.refs.join(' ')).toLowerCase());
   rowsEl.innerHTML = data.rows.map(r => {
-    const hay = (r.subject + ' ' + r.author + ' ' + r.sha + ' ' + r.refs.join(' ')).toLowerCase();
-    const m = q && hay.includes(q);
-    if (m) matches++;
-    const cls = [r.sha === selected ? 'sel' : '', q ? (m ? 'match' : 'dim') : '', r.sha === data.head ? 'head' : ''].join(' ');
-    return '<tr data-sha="'+r.sha+'" class="'+cls+'"><td class="graph">'+svg(r, maxW)+'</td>'+
+    const cls = [r.sha === selected ? 'sel' : '', r.sha === data.head ? 'head' : ''].join(' ');
+    return '<tr data-sha="'+esc(r.sha)+'" class="'+cls+'"><td class="graph">'+svg(r, maxW)+'</td>'+
       '<td class="msg">'+badges(r.refs)+esc(r.subject)+'<span class="actions">'+
       '<a data-action="checkout" title="Checkout">checkout</a><a data-action="createBranch" title="Create branch here">branch</a>'+
       '<a data-action="cherryPick" title="Cherry pick">cherry-pick</a><a data-action="copySha" title="Copy SHA">copy</a></span></td>'+
       '<td class="author">'+esc(r.author)+'</td><td class="date" title="'+new Date(r.date*1000).toLocaleString()+'">'+ago(r.date)+'</td>'+
-      '<td class="sha">'+r.sha.substring(0,7)+'</td></tr>';
+      '<td class="sha">'+esc(r.sha.substring(0,7))+'</td></tr>';
   }).join('');
-  document.getElementById('more').style.display = data.hasMore ? '' : 'none';
+  document.getElementById('more').hidden = !data.hasMore;
+  applyFilter();
+}
+// Filtering only toggles classes on the existing rows: the table (and its SVGs) is not rebuilt per keystroke.
+function applyFilter() {
+  const q = search.value.trim().toLowerCase();
+  const trs = rowsEl.children;
+  let matches = 0;
+  for (let i = 0; i < trs.length; i++) {
+    const m = !!q && hay[i].includes(q);
+    if (m) matches++;
+    trs[i].classList.toggle('match', m);
+    trs[i].classList.toggle('dim', !!q && !m);
+  }
   document.getElementById('count').textContent = data.rows.length + ' commits' + (q ? ' • ' + matches + ' matches' : '');
 }
 window.addEventListener('message', e => {
@@ -207,7 +240,7 @@ rowsEl.addEventListener('click', e => {
   tr.classList.add('sel');
   vscode.postMessage({ type: 'select', sha: selected });
 });
-search.addEventListener('input', render);
+search.addEventListener('input', () => { clearTimeout(filterTimer); filterTimer = setTimeout(applyFilter, 80); });
 search.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   const m = document.querySelector('tr.match'); if (m) m.scrollIntoView({ block: 'center' });
@@ -216,6 +249,6 @@ document.getElementById('all').addEventListener('change', () => vscode.postMessa
 document.getElementById('refresh').addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
 document.getElementById('more').addEventListener('click', () => vscode.postMessage({ type: 'more' }));
 vscode.postMessage({ type: 'ready' });`;
-    return page('Commit Graph', n, this.panel!.webview.cspSource, style, body, script);
+    return page('Commit Graph', n, style, body, script);
   }
 }

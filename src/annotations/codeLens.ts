@@ -51,7 +51,9 @@ export class GitCodeLensProvider implements vscode.CodeLensProvider {
   readonly onDidChangeCodeLenses = this._onDidChange.event;
 
   constructor(private readonly ctx: GitContext) {
-    ctx.onDidChangeRepository(() => this._onDidChange.fire());
+    ctx.onDidChangeRepository((e) => {
+      if (!e.workingTreeOnly) this._onDidChange.fire();
+    });
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('gitsight.codeLens')) this._onDidChange.fire();
     });
