@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 ### Security
 - Commit graph: row actions run only a fixed list of commands, and both panels accept nothing but full commit SHAs from their webview. Before, the graph ran `gitsight.<anything the page sent>`.
